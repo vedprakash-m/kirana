@@ -1,0 +1,911 @@
+openapi: 3.0.3
+info:
+  title: Kirana API
+  version: 1.0.0
+  description: |
+    Smart Grocery Inventory and Prediction API
+    
+    Kirana helps users track grocery inventory and predict when items will run out using machine learning.
+    The API provides endpoints for managing items, importing data from CSV/photos, and generating predictions.
+    
+    ## Features
+    - Smart inventory management with dynamic urgency tracking
+    - LLM-powered CSV and photo parsing
+    - Exponential smoothing prediction algorithm
+    - Teach Mode for rapid onboarding
+    - Cost-controlled LLM usage with budget enforcement
+    
+  contact:
+    name: Kirana API Support
+    email: api-support@kirana.com
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+
+servers:
+  - url: https://kirana-api.azurewebsites.net/api
+    description: Production
+  - url: http://localhost:7071/api
+    description: Local development
+
+security:
+  - BearerAuth: []
+
+tags:
+  - name: Items
+    description: Inventory item management
+  - name: Import
+    description: CSV and photo import operations
+  - name: Predictions
+    description: Prediction calculation and management
+  - name: Transactions
+    description: Transaction history and restocking
+  - name: Users
+    description: User and household management
+  - name: Budget
+    description: LLM budget and cost tracking
+
+paths:
+  /items:
+    get:
+      tags: [Items]
+      summary: List all items for a household
+      description: |
+        Retrieve all inventory items for the authenticated user's household.
+        Can be filtered by urgency level or confidence.
+      operationId: listItems
+      parameters:
+        - name: filter
+          in: query
+          description: Filter items by status
+          required: false
+          schema:
+            type: string
+            enum: [running_out, low_confidence, all]
+            default: all
+        - name: sortBy
+          in: query
+          description: Sort field
+          required: false
+          schema:
+            type: string
+            enum: [urgency, name, predictedRunOutDate, lastRestocked]
+            default: urgency
+        - name: sortOrder
+          in: query
+          description: Sort order
+          required: false
+          schema:
+            type: string
+            enum: [asc, desc]
+            default: asc
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ItemListResponse'
+              example:
+                success: true
+                data:
+                  - id: "550e8400-e29b-41d4-a716-446655440000"
+                    canonicalName: "Milk"
+                    category: "DAIRY"
+                    predictedRunOutDate: "2025-11-10T00:00:00Z"
+                    predictionConfidence: "high"
+                    urgency: "critical"
+                    daysUntilRunOut: 3
+                    lastRestocked: "2025-11-03T10:30:00Z"
+                    averageConsumptionRate: 7
+                    packageSize: 1
+                    packageUnit: "GALLONS"
+                    preferredVendor: "AMAZON"
+                requestId: "req-123"
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    
+    post:
+      tags: [Items]
+      summary: Create a new item
+      description: Manually add a new item to inventory
+      operationId: createItem
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateItemRequest'
+            example:
+              itemName: "Eggs"
+              category: "DAIRY"
+              packageSize: 12
+              packageUnit: "EACH"
+              vendor: "COSTCO"
+              lastRestocked: "2025-11-03"
+      responses:
+        '201':
+          description: Item created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ItemResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+
+  /items/{itemId}:
+    get:
+      tags: [Items]
+      summary: Get item by ID
+      operationId: getItem
+      parameters:
+        - $ref: '#/components/parameters/ItemId'
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ItemResponse'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+    
+    put:
+      tags: [Items]
+      summary: Update an item
+      operationId: updateItem
+      parameters:
+        - $ref: '#/components/parameters/ItemId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateItemRequest'
+      responses:
+        '200':
+          description: Item updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ItemResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+    
+    delete:
+      tags: [Items]
+      summary: Delete an item
+      operationId: deleteItem
+      parameters:
+        - $ref: '#/components/parameters/ItemId'
+      responses:
+        '204':
+          description: Item deleted
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+
+  /items/{itemId}/restock:
+    post:
+      tags: [Items]
+      summary: Mark item as restocked
+      description: |
+        Record a restock event for an item. This creates a transaction and triggers prediction recalculation.
+      operationId: restockItem
+      parameters:
+        - $ref: '#/components/parameters/ItemId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RestockRequest'
+            example:
+              date: "2025-11-03"
+              quantity: 2
+              price: 5.99
+              source: "manual"
+      responses:
+        '200':
+          description: Item restocked
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ItemResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+
+  /items/teach-mode:
+    post:
+      tags: [Items]
+      summary: Create item via Teach Mode
+      description: |
+        Quick item creation for onboarding. Generates instant prediction based on frequency.
+        Requires: itemName, category, frequency (daily/weekly/biweekly/monthly)
+      operationId: createTeachModeItem
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TeachModeRequest'
+            example:
+              itemName: "Bananas"
+              category: "PRODUCE"
+              frequency: "weekly"
+              lastPurchaseDate: "2025-11-03"
+      responses:
+        '201':
+          description: Item created with instant prediction
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ItemResponse'
+              example:
+                success: true
+                data:
+                  id: "item-123"
+                  canonicalName: "Bananas"
+                  category: "PRODUCE"
+                  predictedRunOutDate: "2025-11-10T00:00:00Z"
+                  predictionConfidence: "teach_mode"
+                  urgency: "normal"
+                  daysUntilRunOut: 7
+                  lastRestocked: "2025-11-03T00:00:00Z"
+                  averageConsumptionRate: 7
+                  predictionMetadata:
+                    algorithm: "frequency_based"
+                    frequency: "weekly"
+                    factors:
+                      - factor: "teach_mode"
+                        met: true
+                        value: "weekly"
+                requestId: "req-456"
+
+  /import/csv:
+    post:
+      tags: [Import]
+      summary: Import items from Amazon order history CSV
+      description: |
+        Upload a CSV file containing Amazon order history.
+        Uses LLM (Gemini Flash) to parse and normalize item names.
+        Subject to daily budget cap ($50/day).
+      operationId: importCSV
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: CSV file with Amazon order history
+                dryRun:
+                  type: boolean
+                  description: Parse without saving (for preview)
+                  default: false
+      responses:
+        '200':
+          description: CSV parsed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ImportCSVResponse'
+              example:
+                success: true
+                data:
+                  jobId: "job-789"
+                  rowCount: 50
+                  itemCount: 30
+                  parseSuccessRate: 0.95
+                  llmCost: 0.45
+                  budgetRemaining: 12.30
+                  items:
+                    - canonicalName: "Milk"
+                      category: "DAIRY"
+                      parseConfidence: "high"
+                    - canonicalName: "Eggs"
+                      category: "DAIRY"
+                      parseConfidence: "high"
+                requestId: "req-789"
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '429':
+          $ref: '#/components/responses/BudgetExceededError'
+
+  /import/photo:
+    post:
+      tags: [Import]
+      summary: Import items from receipt photo
+      description: |
+        Upload a photo of a grocery receipt.
+        Uses LLM vision capabilities to extract items.
+      operationId: importPhoto
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [photo]
+              properties:
+                photo:
+                  type: string
+                  format: binary
+                  description: Receipt photo (JPEG/PNG)
+      responses:
+        '200':
+          description: Photo parsed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ImportPhotoResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '429':
+          $ref: '#/components/responses/BudgetExceededError'
+
+  /predictions/calculate:
+    post:
+      tags: [Predictions]
+      summary: Recalculate predictions for items
+      description: |
+        Manually trigger prediction recalculation.
+        Uses exponential smoothing algorithm with alpha=0.3.
+      operationId: calculatePredictions
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                itemIds:
+                  type: array
+                  items:
+                    type: string
+                  description: Specific items to recalculate (omit for all)
+                algorithm:
+                  type: string
+                  enum: [exponential_smoothing, frequency_based]
+                  default: exponential_smoothing
+      responses:
+        '200':
+          description: Predictions recalculated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      recalculatedCount:
+                        type: integer
+                      averageDuration:
+                        type: number
+                        description: Average calculation time in milliseconds
+
+  /budget/status:
+    get:
+      tags: [Budget]
+      summary: Get current budget status
+      description: |
+        Retrieve daily LLM budget usage and remaining quota.
+        Budget resets at midnight UTC.
+      operationId: getBudgetStatus
+      responses:
+        '200':
+          description: Budget status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      dailyCap:
+                        type: number
+                        description: Daily budget cap in USD
+                        example: 50.0
+                      currentSpend:
+                        type: number
+                        description: Current daily spend in USD
+                        example: 12.45
+                      remaining:
+                        type: number
+                        description: Remaining budget in USD
+                        example: 37.55
+                      utilizationPercent:
+                        type: number
+                        description: Budget utilization percentage
+                        example: 24.9
+                      resetsAt:
+                        type: string
+                        format: date-time
+                        description: Next reset timestamp
+                      enforcementActive:
+                        type: boolean
+                        description: Whether budget enforcement is active
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT token obtained from authentication endpoint
+
+  parameters:
+    ItemId:
+      name: itemId
+      in: path
+      required: true
+      description: Unique item identifier (UUID)
+      schema:
+        type: string
+        format: uuid
+      example: "550e8400-e29b-41d4-a716-446655440000"
+
+  schemas:
+    Item:
+      type: object
+      required:
+        - id
+        - canonicalName
+        - category
+        - predictedRunOutDate
+        - predictionConfidence
+        - urgency
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Unique item identifier
+        canonicalName:
+          type: string
+          description: Normalized item name
+          example: "Milk"
+        category:
+          $ref: '#/components/schemas/Category'
+        predictedRunOutDate:
+          type: string
+          format: date-time
+          description: Predicted date when item will run out
+        predictionConfidence:
+          $ref: '#/components/schemas/PredictionConfidence'
+        urgency:
+          $ref: '#/components/schemas/Urgency'
+        daysUntilRunOut:
+          type: integer
+          description: Days until predicted run out
+          minimum: 0
+        lastRestocked:
+          type: string
+          format: date-time
+          description: Last restock timestamp
+        averageConsumptionRate:
+          type: number
+          description: Average days between restocks
+          minimum: 0
+        packageSize:
+          type: number
+          description: Package size (quantity)
+          minimum: 0
+        packageUnit:
+          $ref: '#/components/schemas/UnitOfMeasure'
+        preferredVendor:
+          $ref: '#/components/schemas/Vendor'
+        priceHistory:
+          type: array
+          items:
+            $ref: '#/components/schemas/PricePoint'
+        predictionMetadata:
+          $ref: '#/components/schemas/PredictionMetadata'
+
+    PredictionMetadata:
+      type: object
+      description: Metadata about the prediction calculation
+      required:
+        - algorithm
+        - calculatedAt
+        - factors
+      properties:
+        algorithm:
+          type: string
+          enum: [exponential_smoothing, frequency_based]
+          description: Algorithm used for prediction
+        calculatedAt:
+          type: string
+          format: date-time
+          description: When prediction was calculated
+        factors:
+          type: array
+          description: Factors used in confidence calculation
+          items:
+            type: object
+            required: [factor, met, value]
+            properties:
+              factor:
+                type: string
+                description: Factor name
+                enum:
+                  - min_transactions
+                  - consistent_intervals
+                  - recent_data
+                  - no_outliers
+                  - teach_mode
+                example: "min_transactions"
+              met:
+                type: boolean
+                description: Whether factor was satisfied
+              value:
+                description: Factor value (type varies)
+                oneOf:
+                  - type: string
+                  - type: number
+                  - type: boolean
+                example: 5
+        alpha:
+          type: number
+          description: Exponential smoothing alpha parameter
+          minimum: 0
+          maximum: 1
+          example: 0.3
+        transactionCount:
+          type: integer
+          description: Number of transactions used
+          minimum: 0
+
+    Category:
+      type: string
+      enum:
+        - PRODUCE
+        - DAIRY
+        - MEAT
+        - BAKERY
+        - PANTRY
+        - FROZEN
+        - BEVERAGES
+        - SNACKS
+        - OTHER
+      description: Item category
+
+    UnitOfMeasure:
+      type: string
+      enum:
+        - POUNDS
+        - OUNCES
+        - GALLONS
+        - LITERS
+        - EACH
+        - DOZEN
+        - PACK
+      description: Unit of measure for package size
+
+    Vendor:
+      type: string
+      enum:
+        - AMAZON
+        - COSTCO
+        - WALMART
+        - WHOLE_FOODS
+        - TRADER_JOES
+        - TARGET
+        - OTHER
+      description: Preferred vendor
+
+    PredictionConfidence:
+      type: string
+      enum: [high, medium, low, teach_mode]
+      description: |
+        Confidence level for prediction:
+        - high: ≥3 transactions, consistent intervals, no outliers
+        - medium: 2 transactions or some inconsistency
+        - low: 1 transaction or high variability
+        - teach_mode: Frequency-based prediction (onboarding)
+
+    Urgency:
+      type: string
+      enum: [critical, warning, normal]
+      description: |
+        Item urgency level:
+        - critical: ≤3 days until run out (red)
+        - warning: 4-7 days until run out (amber)
+        - normal: >7 days until run out (green)
+
+    PricePoint:
+      type: object
+      required: [date, price]
+      properties:
+        date:
+          type: string
+          format: date
+        price:
+          type: number
+          format: float
+          minimum: 0
+        vendor:
+          $ref: '#/components/schemas/Vendor'
+
+    CreateItemRequest:
+      type: object
+      required: [itemName, category]
+      properties:
+        itemName:
+          type: string
+          minLength: 1
+          maxLength: 100
+        category:
+          $ref: '#/components/schemas/Category'
+        packageSize:
+          type: number
+          minimum: 0
+        packageUnit:
+          $ref: '#/components/schemas/UnitOfMeasure'
+        vendor:
+          $ref: '#/components/schemas/Vendor'
+        lastRestocked:
+          type: string
+          format: date
+
+    UpdateItemRequest:
+      type: object
+      properties:
+        canonicalName:
+          type: string
+        category:
+          $ref: '#/components/schemas/Category'
+        packageSize:
+          type: number
+        packageUnit:
+          $ref: '#/components/schemas/UnitOfMeasure'
+        preferredVendor:
+          $ref: '#/components/schemas/Vendor'
+
+    RestockRequest:
+      type: object
+      required: [date]
+      properties:
+        date:
+          type: string
+          format: date
+          description: Restock date
+        quantity:
+          type: number
+          minimum: 0
+          description: Quantity restocked
+          default: 1
+        price:
+          type: number
+          minimum: 0
+          description: Price paid
+        source:
+          type: string
+          enum: [manual, csv, photo]
+          default: manual
+
+    TeachModeRequest:
+      type: object
+      required: [itemName, category, frequency]
+      properties:
+        itemName:
+          type: string
+          minLength: 1
+          maxLength: 100
+        category:
+          $ref: '#/components/schemas/Category'
+        frequency:
+          type: string
+          enum: [daily, weekly, biweekly, monthly]
+          description: Purchase frequency
+        lastPurchaseDate:
+          type: string
+          format: date
+          description: Last purchase date (defaults to today)
+
+    ItemListResponse:
+      type: object
+      required: [success, data]
+      properties:
+        success:
+          type: boolean
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Item'
+        requestId:
+          type: string
+
+    ItemResponse:
+      type: object
+      required: [success, data]
+      properties:
+        success:
+          type: boolean
+        data:
+          $ref: '#/components/schemas/Item'
+        requestId:
+          type: string
+
+    ImportCSVResponse:
+      type: object
+      required: [success, data]
+      properties:
+        success:
+          type: boolean
+        data:
+          type: object
+          required: [jobId, rowCount, itemCount, parseSuccessRate]
+          properties:
+            jobId:
+              type: string
+              description: Parse job identifier
+            rowCount:
+              type: integer
+              description: Total rows in CSV
+            itemCount:
+              type: integer
+              description: Successfully parsed items
+            parseSuccessRate:
+              type: number
+              description: Success rate (0-1)
+              minimum: 0
+              maximum: 1
+            llmCost:
+              type: number
+              description: LLM cost for this job (USD)
+            budgetRemaining:
+              type: number
+              description: Remaining daily budget (USD)
+            items:
+              type: array
+              items:
+                type: object
+                properties:
+                  canonicalName:
+                    type: string
+                  category:
+                    $ref: '#/components/schemas/Category'
+                  parseConfidence:
+                    type: string
+                    enum: [high, medium, low]
+        requestId:
+          type: string
+
+    ImportPhotoResponse:
+      type: object
+      required: [success, data]
+      properties:
+        success:
+          type: boolean
+        data:
+          type: object
+          properties:
+            jobId:
+              type: string
+            itemCount:
+              type: integer
+            llmCost:
+              type: number
+            items:
+              type: array
+              items:
+                type: object
+                properties:
+                  canonicalName:
+                    type: string
+                  category:
+                    $ref: '#/components/schemas/Category'
+                  quantity:
+                    type: number
+                  price:
+                    type: number
+
+    ErrorResponse:
+      type: object
+      required: [success, error]
+      properties:
+        success:
+          type: boolean
+          example: false
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              description: Error code
+              example: "VALIDATION_ERROR"
+            message:
+              type: string
+              description: Human-readable error message
+              example: "Invalid category value"
+            details:
+              type: object
+              description: Additional error context
+        requestId:
+          type: string
+
+  responses:
+    UnauthorizedError:
+      description: Unauthorized - Invalid or missing JWT token
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            success: false
+            error:
+              code: "UNAUTHORIZED"
+              message: "Invalid or missing authentication token"
+
+    ValidationError:
+      description: Validation error - Invalid request payload
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            success: false
+            error:
+              code: "VALIDATION_ERROR"
+              message: "Invalid request payload"
+              details:
+                field: "category"
+                issue: "Must be one of: PRODUCE, DAIRY, MEAT, ..."
+
+    NotFoundError:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            success: false
+            error:
+              code: "NOT_FOUND"
+              message: "Item not found"
+
+    BudgetExceededError:
+      description: Daily LLM budget exceeded
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            success: false
+            error:
+              code: "BUDGET_EXCEEDED"
+              message: "Daily LLM budget cap reached ($50/day)"
+              details:
+                currentSpend: 50.12
+                dailyCap: 50.0
+                resetsAt: "2025-11-04T00:00:00Z"
+
+    InternalServerError:
+      description: Internal server error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            success: false
+            error:
+              code: "INTERNAL_ERROR"
+              message: "An unexpected error occurred"

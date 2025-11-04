@@ -1,0 +1,518 @@
+{
+  "info": {
+    "name": "Kirana API",
+    "_postman_id": "kirana-api-v1",
+    "description": "Complete API collection for Kirana - Smart Grocery Inventory Tracker\n\n## Authentication\nAll endpoints (except health check) require Azure AD JWT token.\n\nSet `{{accessToken}}` in environment or use Pre-request Script to acquire token.\n\n## Environments\n\n### Local Development\n- baseUrl: `http://localhost:7071/api`\n- No authentication required (mock auth)\n\n### Staging\n- baseUrl: `https://kirana-api-staging.azurewebsites.net/api`\n- Requires Azure AD token\n\n### Production\n- baseUrl: `https://kirana-api-prod.azurewebsites.net/api`\n- Requires Azure AD token\n\n## Usage\n\n1. Set environment variables (baseUrl, accessToken, householdId)\n2. Run \"Health Check\" to verify API is up\n3. Create test items with \"Create Item\"\n4. Use other endpoints to manage inventory\n\n## Test Data\n\n**Test Household ID**: `test-household-123`\n**Test User ID**: `test-user-123`\n\n## Rate Limiting\n\n- 100 requests/minute per user\n- 429 error if exceeded",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{accessToken}}",
+        "type": "string"
+      }
+    ]
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:7071/api",
+      "type": "string"
+    },
+    {
+      "key": "householdId",
+      "value": "test-household-123",
+      "type": "string"
+    },
+    {
+      "key": "userId",
+      "value": "test-user-123",
+      "type": "string"
+    },
+    {
+      "key": "itemId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "transactionId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "accessToken",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "Health Check",
+      "request": {
+        "auth": {
+          "type": "noauth"
+        },
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/health",
+          "host": ["{{baseUrl}}"],
+          "path": ["health"]
+        },
+        "description": "Check API health status. No authentication required."
+      },
+      "response": []
+    },
+    {
+      "name": "Items",
+      "item": [
+        {
+          "name": "Create Item",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "// Save itemId for subsequent requests",
+                  "if (pm.response.code === 201) {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.environment.set('itemId', jsonData.data.id);",
+                  "    console.log('Created item with ID:', jsonData.data.id);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"householdId\": \"{{householdId}}\",\n  \"canonicalName\": \"Whole Milk\",\n  \"brand\": \"Organic Valley\",\n  \"category\": \"DAIRY\",\n  \"quantity\": 1,\n  \"unitOfMeasure\": \"GALLONS\",\n  \"packageSize\": 1,\n  \"packageUnit\": \"GALLONS\",\n  \"preferredVendor\": \"WHOLE_FOODS\",\n  \"lastPurchaseDate\": \"2025-01-15\",\n  \"lastPurchasePrice\": 6.99,\n  \"teachModeEnabled\": false,\n  \"createdBy\": \"{{userId}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/items",
+              "host": ["{{baseUrl}}"],
+              "path": ["items"]
+            },
+            "description": "Create a new item in the inventory.\n\n**Required fields:**\n- householdId\n- canonicalName\n- category\n- quantity\n- unitOfMeasure\n- packageSize\n- packageUnit\n- createdBy\n\n**Returns:** 201 Created with item object"
+          },
+          "response": []
+        },
+        {
+          "name": "List Items",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/items?householdId={{householdId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["items"],
+              "query": [
+                {
+                  "key": "householdId",
+                  "value": "{{householdId}}"
+                },
+                {
+                  "key": "category",
+                  "value": "DAIRY",
+                  "disabled": true
+                },
+                {
+                  "key": "sortBy",
+                  "value": "urgency",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "Get all items for a household.\n\n**Query Parameters:**\n- householdId (required)\n- category (optional) - Filter by category\n- sortBy (optional) - Sort by field (urgency, name, lastPurchaseDate)\n\n**Returns:** 200 OK with array of items"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Item by ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/items/{{itemId}}?householdId={{householdId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["items", "{{itemId}}"],
+              "query": [
+                {
+                  "key": "householdId",
+                  "value": "{{householdId}}"
+                }
+              ]
+            },
+            "description": "Get a specific item by ID.\n\n**Path Parameters:**\n- itemId\n\n**Query Parameters:**\n- householdId (required)\n\n**Returns:** 200 OK with item object, or 404 Not Found"
+          },
+          "response": []
+        },
+        {
+          "name": "Update Item",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "If-Match",
+                "value": "{{itemEtag}}",
+                "disabled": true,
+                "description": "Optimistic concurrency control"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"quantity\": 2,\n  \"lastPurchasePrice\": 7.99,\n  \"teachModeEnabled\": true,\n  \"teachModeFrequencyDays\": 3\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/items/{{itemId}}?householdId={{householdId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["items", "{{itemId}}"],
+              "query": [
+                {
+                  "key": "householdId",
+                  "value": "{{householdId}}"
+                }
+              ]
+            },
+            "description": "Update an existing item.\n\n**Updatable fields:**\n- quantity\n- preferredVendor\n- lastPurchaseDate\n- lastPurchasePrice\n- teachModeEnabled\n- teachModeFrequencyDays\n\n**Headers:**\n- If-Match (optional) - etag for optimistic concurrency\n\n**Returns:** 200 OK with updated item, or 404 Not Found"
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Item",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/items/{{itemId}}?householdId={{householdId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["items", "{{itemId}}"],
+              "query": [
+                {
+                  "key": "householdId",
+                  "value": "{{householdId}}"
+                }
+              ]
+            },
+            "description": "Soft delete an item (sets deletedAt timestamp).\n\n**Path Parameters:**\n- itemId\n\n**Query Parameters:**\n- householdId (required)\n\n**Returns:** 204 No Content, or 404 Not Found"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Running Out Items",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/items/running-out?householdId={{householdId}}&days=7",
+              "host": ["{{baseUrl}}"],
+              "path": ["items", "running-out"],
+              "query": [
+                {
+                  "key": "householdId",
+                  "value": "{{householdId}}"
+                },
+                {
+                  "key": "days",
+                  "value": "7",
+                  "description": "Days threshold (default: 7)"
+                }
+              ]
+            },
+            "description": "Get items predicted to run out within N days.\n\n**Query Parameters:**\n- householdId (required)\n- days (optional, default: 7)\n\n**Returns:** 200 OK with array of items sorted by urgency"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Low Confidence Items",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/items/low-confidence?householdId={{householdId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["items", "low-confidence"],
+              "query": [
+                {
+                  "key": "householdId",
+                  "value": "{{householdId}}"
+                }
+              ]
+            },
+            "description": "Get items with low confidence predictions (need more data).\n\n**Query Parameters:**\n- householdId (required)\n\n**Returns:** 200 OK with array of items needing Teach Mode"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Inventory Stats",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/items/stats?householdId={{householdId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["items", "stats"],
+              "query": [
+                {
+                  "key": "householdId",
+                  "value": "{{householdId}}"
+                }
+              ]
+            },
+            "description": "Get inventory statistics.\n\n**Query Parameters:**\n- householdId (required)\n\n**Returns:** 200 OK with stats object\n\n**Response Schema:**\n```json\n{\n  \"totalItems\": 42,\n  \"runningOutSoon\": 8,\n  \"lowConfidence\": 5,\n  \"criticalUrgency\": 3,\n  \"warningUrgency\": 5,\n  \"healthyItems\": 34,\n  \"averageConfidence\": 0.75\n}\n```"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Transactions",
+      "item": [
+        {
+          "name": "Create Transaction",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "// Save transactionId",
+                  "if (pm.response.code === 201) {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.environment.set('transactionId', jsonData.data.id);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"householdId\": \"{{householdId}}\",\n  \"itemId\": \"{{itemId}}\",\n  \"purchaseDate\": \"2025-01-20\",\n  \"quantity\": 1,\n  \"totalPrice\": 6.99,\n  \"unitPrice\": 6.99,\n  \"vendor\": \"WHOLE_FOODS\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/transactions",
+              "host": ["{{baseUrl}}"],
+              "path": ["transactions"]
+            },
+            "description": "Record a new purchase transaction.\n\n**Required fields:**\n- householdId\n- itemId\n- purchaseDate\n- quantity\n- totalPrice\n- unitPrice\n- vendor\n\n**Returns:** 201 Created with transaction object"
+          },
+          "response": []
+        },
+        {
+          "name": "List Transactions",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/transactions?householdId={{householdId}}&itemId={{itemId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["transactions"],
+              "query": [
+                {
+                  "key": "householdId",
+                  "value": "{{householdId}}"
+                },
+                {
+                  "key": "itemId",
+                  "value": "{{itemId}}",
+                  "description": "Filter by itemId (optional)"
+                },
+                {
+                  "key": "startDate",
+                  "value": "2025-01-01",
+                  "disabled": true
+                },
+                {
+                  "key": "endDate",
+                  "value": "2025-01-31",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "Get transaction history.\n\n**Query Parameters:**\n- householdId (required)\n- itemId (optional) - Filter by specific item\n- startDate (optional) - Filter by date range\n- endDate (optional)\n\n**Returns:** 200 OK with array of transactions"
+          },
+          "response": []
+        },
+        {
+          "name": "One-Tap Restock",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"householdId\": \"{{householdId}}\",\n  \"itemId\": \"{{itemId}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/transactions/restock",
+              "host": ["{{baseUrl}}"],
+              "path": ["transactions", "restock"]
+            },
+            "description": "Quick restock - create transaction with smart defaults.\n\n**Smart Defaults:**\n- purchaseDate: Today\n- quantity: Previous purchase quantity\n- price: Previous purchase price\n- vendor: Preferred vendor\n\n**Required fields:**\n- householdId\n- itemId\n\n**Returns:** 201 Created with transaction object"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Parsing & LLM",
+      "item": [
+        {
+          "name": "Parse CSV (Amazon)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "multipart/form-data"
+              }
+            ],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": "/path/to/amazon-order-history.csv"
+                },
+                {
+                  "key": "retailer",
+                  "value": "amazon",
+                  "type": "text"
+                },
+                {
+                  "key": "householdId",
+                  "value": "{{householdId}}",
+                  "type": "text"
+                },
+                {
+                  "key": "userId",
+                  "value": "{{userId}}",
+                  "type": "text"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/parse/csv",
+              "host": ["{{baseUrl}}"],
+              "path": ["parse", "csv"]
+            },
+            "description": "Upload and parse CSV order history.\n\n**Supported Retailers:**\n- amazon\n- instacart\n- walmart\n- costco\n\n**Returns:** 202 Accepted with jobId for status tracking"
+          },
+          "response": []
+        },
+        {
+          "name": "Check Parse Job Status",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/parse/status/{{jobId}}?householdId={{householdId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["parse", "status", "{{jobId}}"],
+              "query": [
+                {
+                  "key": "householdId",
+                  "value": "{{householdId}}"
+                }
+              ]
+            },
+            "description": "Check CSV parsing job status.\n\n**Returns:** 200 OK with job status\n\n**Status values:**\n- PENDING: Queued\n- PROCESSING: In progress\n- COMPLETED: Done\n- FAILED: Error occurred"
+          },
+          "response": []
+        },
+        {
+          "name": "Micro-Review (Teach Mode)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"householdId\": \"{{householdId}}\",\n  \"itemId\": \"{{itemId}}\",\n  \"userFrequencyDays\": 3,\n  \"confidence\": \"HIGH\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/teach-mode/review",
+              "host": ["{{baseUrl}}"],
+              "path": ["teach-mode", "review"]
+            },
+            "description": "Submit micro-review for low-confidence item.\n\n**Required fields:**\n- householdId\n- itemId\n- userFrequencyDays (how often user buys)\n- confidence (HIGH/MEDIUM/LOW)\n\n**Returns:** 200 OK with updated item"
+          },
+          "response": []
+        }
+      ]
+    }
+  ],
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Pre-request script to acquire Azure AD token",
+          "// Uncomment and configure for staging/production",
+          "",
+          "// const tokenUrl = 'https://login.microsoftonline.com/common/oauth2/v2.0/token';",
+          "// const clientId = pm.environment.get('azureClientId');",
+          "// const clientSecret = pm.environment.get('azureClientSecret');",
+          "// const scope = 'api://kirana-api/.default';",
+          "",
+          "// pm.sendRequest({",
+          "//     url: tokenUrl,",
+          "//     method: 'POST',",
+          "//     header: {",
+          "//         'Content-Type': 'application/x-www-form-urlencoded'",
+          "//     },",
+          "//     body: {",
+          "//         mode: 'urlencoded',",
+          "//         urlencoded: [",
+          "//             { key: 'grant_type', value: 'client_credentials' },",
+          "//             { key: 'client_id', value: clientId },",
+          "//             { key: 'client_secret', value: clientSecret },",
+          "//             { key: 'scope', value: scope }",
+          "//         ]",
+          "//     }",
+          "// }, function(err, response) {",
+          "//     if (err) {",
+          "//         console.error('Error acquiring token:', err);",
+          "//     } else {",
+          "//         const jsonData = response.json();",
+          "//         pm.environment.set('accessToken', jsonData.access_token);",
+          "//         console.log('Token acquired successfully');",
+          "//     }",
+          "// });"
+        ]
+      }
+    }
+  ]
+}

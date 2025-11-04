@@ -1,0 +1,1 @@
+/Users/ved/Apps/kirana/shared/types.ts

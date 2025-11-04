@@ -1,0 +1,304 @@
+name: Cost Monitoring & Alerts
+
+on:
+  schedule:
+    # Run daily at 9 AM UTC (1 AM PT, 4 AM ET)
+    - cron: '0 9 * * *'
+  workflow_dispatch:  # Allow manual trigger
+
+jobs:
+  check-llm-costs:
+    name: Monitor LLM Budget Usage
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Azure CLI
+        run: |
+          curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash
+
+      - name: Azure Login
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Query LLM Cost Metrics
+        id: query-costs
+        run: |
+          # Query App Insights for LLM costs (last 24 hours)
+          QUERY='customMetrics 
+          | where name == "llm_cost" 
+          | where timestamp > ago(24h)
+          | summarize 
+              TotalCost = sum(value),
+              RequestCount = count(),
+              AvgCost = avg(value),
+              MaxCost = max(value)
+            by operation = tostring(customDimensions.operation)
+          | order by TotalCost desc'
+          
+          RESULTS=$(az monitor app-insights query \
+            --app ${{ secrets.APP_INSIGHTS_APP_ID }} \
+            --analytics-query "$QUERY" \
+            --output json)
+          
+          echo "results=$RESULTS" >> $GITHUB_OUTPUT
+          
+          # Calculate total daily spend
+          TOTAL_SPEND=$(echo $RESULTS | jq '[.tables[0].rows[] | .[0]] | add')
+          echo "total_spend=$TOTAL_SPEND" >> $GITHUB_OUTPUT
+          
+          # Daily budget cap
+          DAILY_CAP=50.00
+          echo "daily_cap=$DAILY_CAP" >> $GITHUB_OUTPUT
+          
+          # Calculate utilization percentage
+          UTILIZATION=$(echo "scale=2; ($TOTAL_SPEND / $DAILY_CAP) * 100" | bc)
+          echo "utilization=$UTILIZATION" >> $GITHUB_OUTPUT
+          
+          # Determine alert level
+          if (( $(echo "$TOTAL_SPEND >= 40" | bc -l) )); then
+            echo "alert_level=critical" >> $GITHUB_OUTPUT
+            echo "alert_emoji=🚨" >> $GITHUB_OUTPUT
+          elif (( $(echo "$TOTAL_SPEND >= 30" | bc -l) )); then
+            echo "alert_level=warning" >> $GITHUB_OUTPUT
+            echo "alert_emoji=⚠️" >> $GITHUB_OUTPUT
+          else
+            echo "alert_level=normal" >> $GITHUB_OUTPUT
+            echo "alert_emoji=✅" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Generate Cost Breakdown
+        id: breakdown
+        run: |
+          # Create detailed breakdown by operation
+          RESULTS='${{ steps.query-costs.outputs.results }}'
+          
+          BREAKDOWN=$(echo $RESULTS | jq -r '
+            .tables[0].rows[] | 
+            "| \(.[4]) | $\(.[0] | tonumber | . * 100 | round / 100) | \(.[1]) | $\(.[2] | tonumber | . * 100 | round / 100) | $\(.[3] | tonumber | . * 100 | round / 100) |"
+          ')
+          
+          echo "breakdown<<EOF" >> $GITHUB_OUTPUT
+          echo "$BREAKDOWN" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Generate Trend Chart
+        id: trend
+        run: |
+          # Query last 7 days for trend
+          TREND_QUERY='customMetrics 
+          | where name == "llm_cost" 
+          | where timestamp > ago(7d)
+          | summarize DailyCost = sum(value) by bin(timestamp, 1d)
+          | order by timestamp asc'
+          
+          TREND_RESULTS=$(az monitor app-insights query \
+            --app ${{ secrets.APP_INSIGHTS_APP_ID }} \
+            --analytics-query "$TREND_QUERY" \
+            --output json)
+          
+          # Format for Slack message (simple text chart)
+          TREND=$(echo $TREND_RESULTS | jq -r '
+            .tables[0].rows[] | 
+            "\(.[0] | split("T")[0]): $\(.[1] | tonumber | . * 100 | round / 100)"
+          ')
+          
+          echo "trend<<EOF" >> $GITHUB_OUTPUT
+          echo "$TREND" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Send Slack Alert (High Usage)
+        if: steps.query-costs.outputs.alert_level != 'normal'
+        uses: slackapi/slack-github-action@v1
+        with:
+          payload: |
+            {
+              "blocks": [
+                {
+                  "type": "header",
+                  "text": {
+                    "type": "plain_text",
+                    "text": "${{ steps.query-costs.outputs.alert_emoji }} LLM Budget Alert: ${{ steps.query-costs.outputs.alert_level }} (${{ steps.query-costs.outputs.utilization }}% utilized)"
+                  }
+                },
+                {
+                  "type": "section",
+                  "fields": [
+                    {
+                      "type": "mrkdwn",
+                      "text": "*Total Spend (24h):*\n$${{ steps.query-costs.outputs.total_spend }}"
+                    },
+                    {
+                      "type": "mrkdwn",
+                      "text": "*Daily Cap:*\n$${{ steps.query-costs.outputs.daily_cap }}"
+                    },
+                    {
+                      "type": "mrkdwn",
+                      "text": "*Remaining:*\n$${{ steps.query-costs.outputs.daily_cap - steps.query-costs.outputs.total_spend | round 2 }}"
+                    },
+                    {
+                      "type": "mrkdwn",
+                      "text": "*Utilization:*\n${{ steps.query-costs.outputs.utilization }}%"
+                    }
+                  ]
+                },
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "*Cost Breakdown by Operation:*\n\n| Operation | Total | Requests | Avg | Max |\n|-----------|-------|----------|-----|-----|\n${{ steps.breakdown.outputs.breakdown }}"
+                  }
+                },
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "*7-Day Trend:*\n```${{ steps.trend.outputs.trend }}```"
+                  }
+                },
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "*Actions:*\n• View detailed logs: <https://portal.azure.com/#@kirana/resource/subscriptions/.../insights|App Insights>\n• Check budget status: <https://kirana-api.azurewebsites.net/api/budget/status|Budget API>\n• Disable CSV imports: Run `az functionapp config appsettings set --name kirana-api --settings ENABLE_CSV_IMPORT=false`"
+                  }
+                },
+                {
+                  "type": "context",
+                  "elements": [
+                    {
+                      "type": "mrkdwn",
+                      "text": "🤖 Automated alert from GitHub Actions • <!date^${{ github.event.repository.updated_at }}^{date_short} at {time}|fallback>"
+                    }
+                  ]
+                }
+              ]
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_COST_ALERTS }}
+
+      - name: Send Slack Summary (Normal Usage)
+        if: steps.query-costs.outputs.alert_level == 'normal'
+        uses: slackapi/slack-github-action@v1
+        with:
+          payload: |
+            {
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "✅ *Daily LLM Cost Report*\n\nTotal spend: $${{ steps.query-costs.outputs.total_spend }} / $${{ steps.query-costs.outputs.daily_cap }} (${{ steps.query-costs.outputs.utilization }}% utilized)\n\n7-day trend:\n```${{ steps.trend.outputs.trend }}```"
+                  }
+                }
+              ]
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_COST_ALERTS }}
+
+      - name: Create GitHub Issue (Critical Alert)
+        if: steps.query-costs.outputs.alert_level == 'critical'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const totalSpend = parseFloat('${{ steps.query-costs.outputs.total_spend }}');
+            const dailyCap = parseFloat('${{ steps.query-costs.outputs.daily_cap }}');
+            const utilization = parseFloat('${{ steps.query-costs.outputs.utilization }}');
+            
+            const issue = await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `🚨 LLM Budget Alert: ${utilization.toFixed(1)}% Utilized ($${totalSpend}/$${dailyCap})`,
+              body: `## Critical Budget Alert
+            
+            **Total Spend (24h):** $${totalSpend}
+            **Daily Cap:** $${dailyCap}
+            **Utilization:** ${utilization.toFixed(1)}%
+            
+            ### Cost Breakdown
+            
+            | Operation | Total | Requests | Avg | Max |
+            |-----------|-------|----------|-----|-----|
+            ${{ steps.breakdown.outputs.breakdown }}
+            
+            ### 7-Day Trend
+            
+            \`\`\`
+            ${{ steps.trend.outputs.trend }}
+            \`\`\`
+            
+            ### Recommended Actions
+            
+            1. Review recent CSV imports for abuse
+            2. Check if any households are making excessive API calls
+            3. Consider temporarily disabling CSV imports
+            4. Investigate unusual spending patterns in App Insights
+            
+            ### Quick Commands
+            
+            \`\`\`bash
+            # Disable CSV imports
+            az functionapp config appsettings set --name kirana-api --settings ENABLE_CSV_IMPORT=false
+            
+            # Query top spenders
+            az monitor app-insights query --app ${APP_INSIGHTS_APP_ID} --analytics-query "customMetrics | where name == 'llm_cost' | summarize Cost = sum(value) by HouseholdId = tostring(customDimensions.householdId) | top 10 by Cost"
+            \`\`\`
+            
+            ---
+            
+            🤖 Auto-generated by Cost Monitoring workflow`,
+              labels: ['cost-alert', 'urgent', 'ops']
+            });
+            
+            console.log(`Created issue #${issue.data.number}`);
+
+      - name: Update Cost Dashboard
+        run: |
+          # Optional: Update README badge or status page
+          UTILIZATION=${{ steps.query-costs.outputs.utilization }}
+          
+          if (( $(echo "$UTILIZATION >= 80" | bc -l) )); then
+            COLOR="red"
+          elif (( $(echo "$UTILIZATION >= 60" | bc -l) )); then
+            COLOR="yellow"
+          else
+            COLOR="green"
+          fi
+          
+          echo "Budget utilization: $UTILIZATION% ($COLOR)" > cost-status.txt
+          
+          # Could push to gh-pages branch for status page
+          # git config user.name "GitHub Actions"
+          # git config user.email "actions@github.com"
+          # git add cost-status.txt
+          # git commit -m "Update cost status"
+          # git push
+
+      - name: Workflow Summary
+        run: |
+          echo "## 💰 LLM Cost Monitoring Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Alert Level:** ${{ steps.query-costs.outputs.alert_emoji }} ${{ steps.query-costs.outputs.alert_level }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Total Spend:** \$${{ steps.query-costs.outputs.total_spend }} / \$${{ steps.query-costs.outputs.daily_cap }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Utilization:** ${{ steps.query-costs.outputs.utilization }}%" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Cost Breakdown" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Operation | Total | Requests | Avg | Max |" >> $GITHUB_STEP_SUMMARY
+          echo "|-----------|-------|----------|-----|-----|" >> $GITHUB_STEP_SUMMARY
+          echo "${{ steps.breakdown.outputs.breakdown }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 7-Day Trend" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          echo "${{ steps.trend.outputs.trend }}" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY

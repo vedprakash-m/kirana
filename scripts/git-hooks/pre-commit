@@ -1,0 +1,155 @@
+#!/bin/bash
+
+#
+# Git Pre-Commit Hook - Secrets Scanner
+#
+# Prevents committing files that contain potential secrets or sensitive data.
+# 
+# Installation:
+#   chmod +x .git/hooks/pre-commit
+#   ln -sf ../../scripts/git-hooks/pre-commit .git/hooks/pre-commit
+#
+# Bypass (emergency only):
+#   git commit --no-verify
+#
+
+# Colors for output
+RED='\033[0;31m'
+YELLOW='\033[1;33m'
+GREEN='\033[0;32m'
+NC='\033[0m' # No Color
+
+echo "🔍 Running secrets scanner..."
+
+# Secret patterns to detect
+PATTERNS=(
+    # Gemini API keys
+    'AIza[0-9A-Za-z-_]{35}'
+    
+    # Azure Cosmos DB connection strings
+    'AccountKey=[A-Za-z0-9+/=]{88}'
+    'AccountEndpoint=https://[a-z0-9-]+\.documents\.azure\.com'
+    
+    # Azure Storage connection strings
+    'DefaultEndpointsProtocol=https;AccountName='
+    
+    # Generic API keys (32-128 characters)
+    '["\047][a-zA-Z0-9]{32,128}["\047]'
+    
+    # Private keys
+    '-----BEGIN (RSA )?PRIVATE KEY-----'
+    
+    # JWT tokens
+    'eyJ[a-zA-Z0-9_-]{10,}\.eyJ[a-zA-Z0-9_-]{10,}\.[a-zA-Z0-9_-]{10,}'
+    
+    # Passwords in connection strings
+    'Password=[^;]{8,}'
+    
+    # Bearer tokens
+    'Bearer [A-Za-z0-9\-._~+/]+='
+    
+    # Environment variable assignments with potential secrets
+    'GEMINI_API_KEY='
+    'COSMOS_CONNECTION_STRING='
+    'STORAGE_CONNECTION_STRING='
+    'ENTRA_CLIENT_SECRET='
+)
+
+# Files to check (staged for commit)
+FILES=$(git diff --cached --name-only --diff-filter=ACM)
+
+if [ -z "$FILES" ]; then
+    echo -e "${GREEN}✓ No files to scan${NC}"
+    exit 0
+fi
+
+# Track if any secrets found
+SECRETS_FOUND=0
+
+# Check each file
+for FILE in $FILES; do
+    # Skip binary files, images, and lock files
+    if [[ "$FILE" == *.png ]] || \
+       [[ "$FILE" == *.jpg ]] || \
+       [[ "$FILE" == *.jpeg ]] || \
+       [[ "$FILE" == *.gif ]] || \
+       [[ "$FILE" == *.pdf ]] || \
+       [[ "$FILE" == *package-lock.json ]] || \
+       [[ "$FILE" == *yarn.lock ]]; then
+        continue
+    fi
+    
+    # Skip if file doesn't exist (deleted)
+    if [ ! -f "$FILE" ]; then
+        continue
+    fi
+    
+    # Check each pattern
+    for PATTERN in "${PATTERNS[@]}"; do
+        # Use grep with Perl-compatible regex
+        MATCHES=$(git diff --cached "$FILE" | grep -P "$PATTERN" || true)
+        
+        if [ ! -z "$MATCHES" ]; then
+            echo -e "${RED}✗ Potential secret found in $FILE${NC}"
+            echo -e "${YELLOW}Pattern: $PATTERN${NC}"
+            echo -e "${YELLOW}Match: $(echo "$MATCHES" | head -n 1)${NC}"
+            echo ""
+            SECRETS_FOUND=1
+        fi
+    done
+done
+
+# Check for common secret file patterns
+SENSITIVE_FILES=(
+    "*.pem"
+    "*.key"
+    "*.p12"
+    "*.pfx"
+    "*secrets*.json"
+    "*credentials*.json"
+    ".env"
+    ".env.local"
+    ".env.production"
+)
+
+for PATTERN in "${SENSITIVE_FILES[@]}"; do
+    for FILE in $FILES; do
+        if [[ "$FILE" == $PATTERN ]]; then
+            echo -e "${RED}✗ Sensitive file detected: $FILE${NC}"
+            echo -e "${YELLOW}These files should not be committed. Add to .gitignore instead.${NC}"
+            echo ""
+            SECRETS_FOUND=1
+        fi
+    done
+done
+
+# Check for hardcoded IPs or internal URLs
+HARDCODED_URLS=$(git diff --cached | grep -P 'https?://(localhost|127\.0\.0\.1|10\.|172\.(1[6-9]|2[0-9]|3[0-1])\.|192\.168\.)' || true)
+if [ ! -z "$HARDCODED_URLS" ]; then
+    echo -e "${YELLOW}⚠ Warning: Hardcoded localhost/internal URLs detected${NC}"
+    echo -e "${YELLOW}Consider using environment variables instead${NC}"
+    echo "$HARDCODED_URLS"
+    echo ""
+fi
+
+# If secrets found, block commit
+if [ $SECRETS_FOUND -eq 1 ]; then
+    echo -e "${RED}========================================${NC}"
+    echo -e "${RED}❌ COMMIT BLOCKED: Secrets detected!${NC}"
+    echo -e "${RED}========================================${NC}"
+    echo ""
+    echo -e "Potential secrets or sensitive data found in your commit."
+    echo -e "Please:"
+    echo -e "  1. Remove the secrets from your code"
+    echo -e "  2. Use environment variables or Azure Key Vault instead"
+    echo -e "  3. Add sensitive files to .gitignore"
+    echo ""
+    echo -e "If this is a false positive, you can bypass this check with:"
+    echo -e "  ${YELLOW}git commit --no-verify${NC}"
+    echo ""
+    echo -e "For help, see: docs/security/secrets-management.md"
+    exit 1
+fi
+
+echo -e "${GREEN}✓ No secrets detected${NC}"
+exit 0

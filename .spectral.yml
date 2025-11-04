@@ -1,0 +1,108 @@
+extends: [[spectral:oas, all]]
+
+rules:
+  # Ensure all operations have summaries
+  operation-summary: error
+  
+  # Ensure all operations have descriptions
+  operation-description: warn
+  
+  # Ensure all operations have tags
+  operation-tags: error
+  
+  # Ensure all operations have operationId
+  operation-operationId: error
+  
+  # Ensure all paths have descriptions
+  path-description: warn
+  
+  # Ensure all schemas have descriptions
+  schema-description: warn
+  
+  # Ensure all parameters have descriptions
+  parameter-description: warn
+  
+  # Ensure all responses have descriptions
+  response-description: error
+  
+  # Ensure examples are provided
+  operation-example: warn
+  
+  # Ensure security is defined
+  operation-security-defined: error
+  
+  # Custom rule: Validate prediction factors structure
+  prediction-factors-structure:
+    description: PredictionMetadata must have factors array with correct structure
+    severity: error
+    given: "$.components.schemas.PredictionMetadata.properties.factors"
+    then:
+      - field: type
+        function: truthy
+      - field: type
+        function: pattern
+        functionOptions:
+          match: "array"
+  
+  # Custom rule: Validate error response format
+  error-response-format:
+    description: ErrorResponse must have success, error, and requestId fields
+    severity: error
+    given: "$.components.schemas.ErrorResponse.properties"
+    then:
+      - field: success
+        function: truthy
+      - field: error
+        function: truthy
+  
+  # Custom rule: Ensure confidence enum values
+  confidence-enum-values:
+    description: PredictionConfidence must include high, medium, low, teach_mode
+    severity: error
+    given: "$.components.schemas.PredictionConfidence.enum"
+    then:
+      - function: schema
+        functionOptions:
+          schema:
+            type: array
+            contains:
+              enum: [high, medium, low, teach_mode]
+  
+  # Custom rule: Ensure urgency enum values
+  urgency-enum-values:
+    description: Urgency must include critical, warning, normal
+    severity: error
+    given: "$.components.schemas.Urgency.enum"
+    then:
+      - function: schema
+        functionOptions:
+          schema:
+            type: array
+            contains:
+              enum: [critical, warning, normal]
+  
+  # Custom rule: Budget endpoint must exist
+  budget-endpoint-exists:
+    description: Budget status endpoint must be defined
+    severity: error
+    given: "$.paths"
+    then:
+      - field: "/budget/status"
+        function: truthy
+  
+  # Ensure all success responses use standard wrapper
+  success-response-wrapper:
+    description: Success responses should have success and data fields
+    severity: warn
+    given: "$.paths[*][*].responses.20*.content.application/json.schema.properties"
+    then:
+      - field: success
+        function: truthy
+      - field: data
+        function: truthy
+  
+  # Disable rules that are too strict for our use case
+  info-contact: off
+  info-description: off
+  tag-description: off
+  no-$ref-siblings: off
