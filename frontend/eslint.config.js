@@ -19,5 +19,11 @@ export default defineConfig([
       ecmaVersion: 2020,
       globals: globals.browser,
     },
+    rules: {
+      // Allow any type in shared types (imported from backend)
+      '@typescript-eslint/no-explicit-any': 'off',
+      // Allow exporting helpers with components (shadcn/ui pattern)
+      'react-refresh/only-export-components': ['warn', { allowConstantExport: true }],
+    },
   },
 ])
