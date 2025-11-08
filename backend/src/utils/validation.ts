@@ -283,7 +283,7 @@ export const sanitize = {
    */
   sql(input: string): string {
     return input
-      .replace(/[';\-]/g, '') // Remove SQL comment/terminator chars
+      .replace(/[';-]/g, '') // Remove SQL comment/terminator chars
       .replace(/\bOR\b|\bAND\b/gi, '') // Remove boolean operators
       .trim();
   }
