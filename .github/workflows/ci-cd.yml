@@ -25,6 +25,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       
+      - name: Setup Shared Types
+        run: |
+          # Copy shared types to frontend and backend
+          mkdir -p frontend/src/types backend/src/types
+          cp shared/types.ts frontend/src/types/shared.ts
+          cp shared/types.ts backend/src/types/shared.ts
+      
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
@@ -104,6 +111,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       
+      - name: Setup Shared Types
+        run: |
+          mkdir -p backend/src/types
+          cp shared/types.ts backend/src/types/shared.ts
+      
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
@@ -142,6 +154,11 @@ jobs:
     if: github.event_name != 'schedule'
     steps:
       - uses: actions/checkout@v4
+      
+      - name: Setup Shared Types
+        run: |
+          mkdir -p frontend/src/types
+          cp shared/types.ts frontend/src/types/shared.ts
       
       - name: Setup Node.js
         uses: actions/setup-node@v4
