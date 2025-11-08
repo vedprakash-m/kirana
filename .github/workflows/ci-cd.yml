@@ -27,8 +27,9 @@ jobs:
       
       - name: Setup Shared Types
         run: |
-          # Copy shared types to frontend and backend
+          # Remove dangling symlinks and copy shared types
           mkdir -p frontend/src/types backend/src/types
+          rm -f frontend/src/types/shared.ts backend/src/types/shared.ts
           cp shared/types.ts frontend/src/types/shared.ts
           cp shared/types.ts backend/src/types/shared.ts
       
@@ -114,6 +115,7 @@ jobs:
       - name: Setup Shared Types
         run: |
           mkdir -p backend/src/types
+          rm -f backend/src/types/shared.ts
           cp shared/types.ts backend/src/types/shared.ts
       
       - name: Setup Node.js
@@ -158,6 +160,7 @@ jobs:
       - name: Setup Shared Types
         run: |
           mkdir -p frontend/src/types
+          rm -f frontend/src/types/shared.ts
           cp shared/types.ts frontend/src/types/shared.ts
       
       - name: Setup Node.js
