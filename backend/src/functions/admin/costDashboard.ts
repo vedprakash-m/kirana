@@ -135,7 +135,7 @@ async function getCostSummary(
   context: InvocationContext
 ): Promise<HttpResponseInit> {
   if (!isAdmin(request)) {
-    return createErrorResponse(ErrorCode.UNAUTHORIZED, 'Admin access required', 403);
+    return createErrorResponse(ErrorCode.FORBIDDEN, 'Admin access required', 403);
   }
 
   try {
@@ -160,20 +160,23 @@ async function getCostSummary(
       .fetchAll();
 
     // Aggregate data
-    const totalSpend = records.reduce((sum, r) => sum + r.cost, 0);
+    const totalSpend = records.reduce((sum, r) => sum + r.llmCostUSD, 0);
     const todayRecords = records.filter(r => new Date(r.createdAt) >= startOfDay);
-    const todaySpend = todayRecords.reduce((sum, r) => sum + r.cost, 0);
-    const uniqueUsers = new Set(records.map(r => r.userId)).size;
+    const todaySpend = todayRecords.reduce((sum, r) => sum + r.llmCostUSD, 0);
+    const uniqueUsers = new Set(records.map(r => r.userId).filter(Boolean)).size;
     const totalOperations = records.length;
 
     // User monthly spend (current month)
     const monthRecords = records.filter(r => new Date(r.createdAt) >= startOfMonth);
     const userMonthlySpend = new Map<string, number>();
     monthRecords.forEach(r => {
-      const current = userMonthlySpend.get(r.userId) || 0;
-      userMonthlySpend.set(r.userId, current + r.cost);
+      if (r.userId) {
+        const current = userMonthlySpend.get(r.userId) || 0;
+        userMonthlySpend.set(r.userId, current + r.llmCostUSD);
+      }
     });
     const topUserMonthly = Math.max(...Array.from(userMonthlySpend.values()), 0);
+    const totalUsers = uniqueUsers;
 
     const summary: CostSummary = {
       totalSpend,
@@ -207,7 +210,7 @@ async function getCostByDay(
   context: InvocationContext
 ): Promise<HttpResponseInit> {
   if (!isAdmin(request)) {
-    return createErrorResponse(ErrorCode.UNAUTHORIZED, 'Admin access required', 403);
+    return createErrorResponse(ErrorCode.FORBIDDEN, 'Admin access required', 403);
   }
 
   try {
@@ -233,9 +236,11 @@ async function getCostByDay(
     records.forEach(record => {
       const date = record.createdAt.split('T')[0];  // YYYY-MM-DD
       const current = dailyMap.get(date) || { spend: 0, operations: new Set(), users: new Set() };
-      current.spend += record.cost;
+      current.spend += record.llmCostUSD;
       current.operations.add(record.id);
-      current.users.add(record.userId);
+      if (record.userId) {
+        current.users.add(record.userId);
+      }
       dailyMap.set(date, current);
     });
 
@@ -267,7 +272,7 @@ async function getCostByUser(
   context: InvocationContext
 ): Promise<HttpResponseInit> {
   if (!isAdmin(request)) {
-    return createErrorResponse(ErrorCode.UNAUTHORIZED, 'Admin access required', 403);
+    return createErrorResponse(ErrorCode.FORBIDDEN, 'Admin access required', 403);
   }
 
   try {
@@ -278,6 +283,7 @@ async function getCostByUser(
 
     const query = `
       SELECT * FROM c 
+      WHERE c.userId != null
       ORDER BY c.createdAt DESC
     `;
     
@@ -288,14 +294,16 @@ async function getCostByUser(
     // Group by user
     const userMap = new Map<string, { total: number; count: number; lastOp: string; monthly: number }>();
     records.forEach(record => {
+      if (!record.userId) return;
+      
       const current = userMap.get(record.userId) || { total: 0, count: 0, lastOp: '', monthly: 0 };
-      current.total += record.cost;
+      current.total += record.llmCostUSD;
       current.count += 1;
       if (!current.lastOp || record.createdAt > current.lastOp) {
         current.lastOp = record.createdAt;
       }
       if (new Date(record.createdAt) >= startOfMonth) {
-        current.monthly += record.cost;
+        current.monthly += record.llmCostUSD;
       }
       userMap.set(record.userId, current);
     });
@@ -324,14 +332,14 @@ async function getCostByUser(
 
 /**
  * GET /api/admin/cost/by-operation
- * Operation breakdown (parse vs predict)
+ * Operation breakdown (by period type)
  */
 async function getCostByOperation(
   request: HttpRequest,
   context: InvocationContext
 ): Promise<HttpResponseInit> {
   if (!isAdmin(request)) {
-    return createErrorResponse(ErrorCode.UNAUTHORIZED, 'Admin access required', 403);
+    return createErrorResponse(ErrorCode.FORBIDDEN, 'Admin access required', 403);
   }
 
   try {
@@ -352,15 +360,16 @@ async function getCostByOperation(
       })
       .fetchAll();
 
-    // Group by operation
+    // Group by period type (since we don't track individual operations)
     const operationMap = new Map<string, { count: number; totalCost: number; totalInputTokens: number; totalOutputTokens: number }>();
     records.forEach(record => {
-      const current = operationMap.get(record.operation) || { count: 0, totalCost: 0, totalInputTokens: 0, totalOutputTokens: 0 };
+      const operation = `${record.periodType}_tracking`;
+      const current = operationMap.get(operation) || { count: 0, totalCost: 0, totalInputTokens: 0, totalOutputTokens: 0 };
       current.count += 1;
-      current.totalCost += record.cost;
-      current.totalInputTokens += record.inputTokens;
-      current.totalOutputTokens += record.outputTokens;
-      operationMap.set(record.operation, current);
+      current.totalCost += record.llmCostUSD;
+      current.totalInputTokens += record.llmTokensIn;
+      current.totalOutputTokens += record.llmTokensOut;
+      operationMap.set(operation, current);
     });
 
     // Convert to array
