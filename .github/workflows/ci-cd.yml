@@ -42,7 +42,7 @@ jobs:
       
       - name: Install Dependencies
         run: |
-          cd frontend && npm ci
+          cd frontend && npm ci --legacy-peer-deps
           cd ../backend && npm ci
       
       - name: Lint Frontend
@@ -150,7 +150,7 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
       
       - name: Install Dependencies
-        run: cd frontend && npm ci
+        run: cd frontend && npm ci --legacy-peer-deps
       
       - name: Run Tests
         run: cd frontend && npm test
