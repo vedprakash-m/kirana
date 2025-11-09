@@ -1,26 +1,30 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { MainLayout } from './components/layout/MainLayout';
-import { ProtectedRoute } from './components/layout/ProtectedRoute';
+import { ProtectedRouteWrapper } from './components/auth/ProtectedRouteWrapper';
 
-// Placeholder pages (will be created in subsequent tasks)
+// Public pages
+import { LandingPage } from './pages/LandingPage';
+import { AuthCallback } from './pages/AuthCallback';
+
+// Protected pages
 import { HomePage } from './pages/HomePage';
 import { InventoryPage } from './pages/InventoryPage';
 import { ItemDetailPage } from './pages/ItemDetailPage';
 import { ImportPage } from './pages/ImportPage';
 import { SettingsPage } from './pages/SettingsPage';
-import { LoginPage } from './pages/LoginPage';
 
 function App() {
   return (
     <BrowserRouter>
       <Routes>
-        {/* Public route */}
-        <Route path="/login" element={<LoginPage />} />
+        {/* Public routes */}
+        <Route path="/" element={<LandingPage />} />
+        <Route path="/auth/callback" element={<AuthCallback />} />
         
         {/* Protected routes with layout */}
-        <Route element={<ProtectedRoute />}>
+        <Route element={<ProtectedRouteWrapper />}>
           <Route element={<MainLayout />}>
-            <Route path="/" element={<HomePage />} />
+            <Route path="/dashboard" element={<HomePage />} />
             <Route path="/inventory" element={<InventoryPage />} />
             <Route path="/items/:id" element={<ItemDetailPage />} />
             <Route path="/import" element={<ImportPage />} />
@@ -28,7 +32,10 @@ function App() {
           </Route>
         </Route>
         
-        {/* Catch-all redirect */}
+        {/* Legacy route redirects */}
+        <Route path="/home" element={<Navigate to="/dashboard" replace />} />
+        
+        {/* Catch-all: redirect to landing for unknown routes */}
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>

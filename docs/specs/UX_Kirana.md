@@ -1,7 +1,7 @@
 # Kirana UX Design Specification
 
-**Document Version:** 1.3 (Production-Ready Polish)  
-**Last Updated:** November 2, 2025  
+**Document Version:** 1.4 (Public Landing Page)  
+**Last Updated:** November 9, 2025  
 **Status:** Ready for Design & Development  
 **Author(s):** Design Team  
 
@@ -12,6 +12,14 @@
 This UX Design Specification defines the user experience, interaction patterns, visual design, and information architecture for Kirana's web application (Phase 1-3). It translates the PRD requirements and technical architecture into concrete, implementable user interfaces optimized for usability, accessibility, and the **"activate users within 5 minutes" goal** (PRD requirement: see first personalized prediction within 5 minutes).
 
 ### Key Revisions
+
+**v1.4 (Public Landing Page - Nov 9, 2025):**
+- **Apple-inspired landing page**: Minimalist public marketing site with hero, features, and CTA
+- **Route architecture**: Public landing page (/) vs. protected app (/dashboard, /inventory, etc.)
+- **Typography system**: 64px hero headlines, system font stack (-apple-system, SF Pro)
+- **Scroll animations**: Parallax effects, scroll-triggered fades for engagement
+- **Mobile-first responsive**: Breakpoints optimized for all devices
+- **Brand consistency**: Reuses existing app color palette and component library
 
 **v1.1 (Gemini Review):**
 - **Dynamic urgency colors**: Color-coding now relative to item's purchase frequency (not static thresholds)
@@ -53,6 +61,9 @@ This UX Design Specification defines the user experience, interaction patterns, 
 1. [Information Architecture](#1-information-architecture)
 2. [Navigation System](#2-navigation-system)
 3. [Screen-by-Screen Design](#3-screen-by-screen-design)
+   - [3.0 Landing Page (Public)](#30-landing-page-public)
+   - [3.1 Home Dashboard](#31-home-dashboard)
+   - [3.2 My Inventory](#32-my-inventory-list-view)
 4. [Component Library](#4-component-library)
 5. [Interaction Patterns](#5-interaction-patterns)
 6. [Visual Design System](#6-visual-design-system)
@@ -67,10 +78,20 @@ This UX Design Specification defines the user experience, interaction patterns, 
 
 ## 1. Information Architecture
 
-### 1.1 Site Map (Phase 1-2)
+### 1.1 Site Map (Phase 1-3)
 
 ```
-Kirana Web App
+Kirana Public Site
+│
+├── 🌐 Landing Page (Public)
+│   ├── Hero Section
+│   ├── Feature Highlights (3 sections)
+│   ├── Final CTA
+│   └── Footer
+│
+└── [Sign In] → Kirana Web App (Protected)
+
+Kirana Web App (Authenticated)
 │
 ├── 🏠 Home (Dashboard)
 │   ├── Running Out Soon (≤7 days)
@@ -252,6 +273,321 @@ Welcome Screen (Demo Mode) → Value demonstrated in <30 seconds
 ---
 
 ## 3. Screen-by-Screen Design
+
+### 3.0 Landing Page (Public)
+
+**Design Philosophy:** Apple-inspired minimalism with focus on clarity and elegance. The landing page serves as the first touchpoint for new users, communicating Kirana's value proposition and driving sign-ups. Design principles: generous white space, large typography, product-focused imagery, subtle animations.
+
+**Route:** `/` (public, accessible without authentication)
+
+**Layout Structure** (Full-width sections, mobile-first responsive)
+
+#### Section 1: Hero (Above the Fold)
+
+```
+┌────────────────────────────────────────────────────────────────────┐
+│                                                                    │
+│                         KIRANA LOGO                                │
+│                                                   [Sign In]        │
+│                                                                    │
+│                                                                    │
+│               Never run out of your essentials.                    │
+│                                                                    │
+│         Smart predictions that learn your household's rhythm.      │
+│                                                                    │
+│                                                                    │
+│                   [Get Started with Microsoft]                     │
+│                                                                    │
+│                                                                    │
+│                     [Product Screenshot]                           │
+│              (Inventory view showing color-coded items)            │
+│                                                                    │
+└────────────────────────────────────────────────────────────────────┘
+```
+
+**Visual Specifications:**
+- **Headline:** "Never run out of your essentials."
+  - Font: System font stack (`-apple-system`, `BlinkMacSystemFont`, `"SF Pro Display"`, `"Segoe UI"`, `Roboto`)
+  - Size: 64px (desktop), 40px (tablet), 32px (mobile)
+  - Weight: 700 (bold)
+  - Color: `#1a1a1a` (near-black for contrast)
+  - Line height: 1.1
+  - Letter spacing: -0.5px (tight tracking for impact)
+  
+- **Subheadline:** "Smart predictions that learn your household's rhythm."
+  - Font: Same system font stack
+  - Size: 24px (desktop), 20px (tablet), 18px (mobile)
+  - Weight: 400 (regular)
+  - Color: `#666666` (medium gray)
+  - Line height: 1.5
+  - Max width: 600px (centered)
+  
+- **CTA Button:** "Get Started with Microsoft"
+  - Reuses existing `Button` component (variant="default", size="lg")
+  - Background: `#3B82F6` (brand blue)
+  - Text: White, 18px, weight 600
+  - Padding: 16px 32px
+  - Border radius: 8px
+  - Hover: Slight scale (1.02) + subtle shadow
+  - Icon: Microsoft logo (left side)
+  - Min width: 280px
+  
+- **Product Screenshot:**
+  - Max width: 1200px (desktop), 100% (mobile)
+  - Rounded corners: 16px
+  - Subtle shadow: `0 20px 60px rgba(0, 0, 0, 0.1)`
+  - Screenshot content: Inventory page showing 5-6 items with urgency colors (red/yellow/green)
+  - Annotations: None (let the UI speak for itself)
+
+**Layout:**
+- Full viewport height (100vh) centered vertically
+- Container: max-width 1400px, centered horizontally
+- Background: Pure white (`#FFFFFF`)
+- Top navigation: Kirana logo (left), Sign In button (right), fixed position
+- Content: Centered text block → CTA → Screenshot (stacked vertically)
+- Padding: 80px top (for fixed nav), 120px bottom
+
+**Responsive Breakpoints:**
+- Desktop (≥1280px): 3-column grid for features, full-size screenshot
+- Tablet (768px-1279px): 2-column grid for features, medium screenshot
+- Mobile (<768px): Single column, smaller typography, full-width screenshot
+
+---
+
+#### Section 2: Feature Highlight 1 - AI-Powered Predictions
+
+```
+┌────────────────────────────────────────────────────────────────────┐
+│                                                                    │
+│   ┌────────────────┐              Know before you run out.        │
+│   │                │                                               │
+│   │  Prediction    │        Our AI learns your household's        │
+│   │  Timeline      │        shopping patterns and predicts         │
+│   │  Screenshot    │        when you'll run out of each item.     │
+│   │                │                                               │
+│   │  (Graph UI)    │        No manual tracking. No guesswork.     │
+│   │                │        Just smart predictions.                │
+│   └────────────────┘                                               │
+│                                                                    │
+└────────────────────────────────────────────────────────────────────┘
+```
+
+**Visual Specifications:**
+- Layout: Two-column (50/50 split on desktop, stacked on mobile)
+- Screenshot on left, text on right (reversed on mobile: text first, then image)
+- Background: Light gray (`#F9FAFB`) for subtle contrast with hero
+- Padding: 120px vertical, 80px horizontal
+- Screenshot: Prediction timeline graph showing exponential smoothing curve
+- Text alignment: Left-aligned, max-width 500px
+
+**Typography:**
+- Headline: "Know before you run out."
+  - Size: 48px (desktop), 32px (mobile)
+  - Weight: 700
+  - Color: `#1a1a1a`
+  
+- Body text: "Our AI learns your household's shopping patterns..."
+  - Size: 18px (desktop), 16px (mobile)
+  - Weight: 400
+  - Color: `#666666`
+  - Line height: 1.7
+  - Max width: 500px
+
+**Animation:**
+- Parallax effect: Screenshot moves at 0.5x scroll speed
+- Fade-in trigger: When section reaches 70% viewport
+- Transition: opacity 0→1 over 0.6s ease-out
+
+---
+
+#### Section 3: Feature Highlight 2 - One-Tap Restock
+
+```
+┌────────────────────────────────────────────────────────────────────┐
+│                                                                    │
+│   Restock in one tap.              ┌────────────────┐             │
+│                                     │                │             │
+│   When an item is running out,     │  ItemCard      │             │
+│   just tap to record your          │  with          │             │
+│   next purchase. The AI updates    │  One-Tap       │             │
+│   its prediction instantly.        │  Button        │             │
+│                                     │                │             │
+│   Fast. Simple. Accurate.          │  Screenshot    │             │
+│                                     └────────────────┘             │
+│                                                                    │
+└────────────────────────────────────────────────────────────────────┘
+```
+
+**Visual Specifications:**
+- Layout: Two-column (50/50 split, reversed from Section 2)
+- Text on left, screenshot on right
+- Background: Pure white (`#FFFFFF`)
+- Padding: 120px vertical, 80px horizontal
+- Screenshot: ItemCard component showing "Milk" with green "One-Tap Restock" button
+- Optimistic UI demonstration: Before/after states showing instant prediction update
+
+**Typography:** Same as Section 2
+- Headline: "Restock in one tap."
+- Body: "When an item is running out..."
+
+**Animation:**
+- Parallax effect: Same as Section 2
+- Fade-in trigger: When section reaches 70% viewport
+- Interactive demo: Hover over screenshot highlights the button (desktop only)
+
+---
+
+#### Section 4: Feature Highlight 3 - Import & Share
+
+```
+┌────────────────────────────────────────────────────────────────────┐
+│                                                                    │
+│   ┌────────────────┐              Import your purchase history.   │
+│   │                │                                               │
+│   │  CSV Upload    │        Upload your Amazon order history      │
+│   │  Interface     │        or scan a receipt. Kirana extracts    │
+│   │  Screenshot    │        everything automatically.             │
+│   │                │                                               │
+│   │                │        Share your household inventory        │
+│   │                │        with family. Everyone stays synced.   │
+│   └────────────────┘                                               │
+│                                                                    │
+└────────────────────────────────────────────────────────────────────┘
+```
+
+**Visual Specifications:**
+- Layout: Two-column (50/50 split, same as Section 2)
+- Screenshot on left, text on right
+- Background: Light gray (`#F9FAFB`)
+- Padding: 120px vertical, 80px horizontal
+- Screenshot: Import page showing CSV upload interface with parsing progress
+- Multi-user icons: Small avatars showing household members
+
+**Typography:** Same as previous sections
+- Headline: "Import your purchase history."
+- Body: "Upload your Amazon order history..."
+
+**Animation:**
+- Parallax effect: Same as previous sections
+- Fade-in trigger: When section reaches 70% viewport
+
+---
+
+#### Section 5: Final CTA
+
+```
+┌────────────────────────────────────────────────────────────────────┐
+│                                                                    │
+│                                                                    │
+│                   Start tracking your essentials.                  │
+│                                                                    │
+│                        It's free. Forever.                         │
+│                                                                    │
+│                                                                    │
+│                   [Get Started with Microsoft]                     │
+│                                                                    │
+│                                                                    │
+└────────────────────────────────────────────────────────────────────┘
+```
+
+**Visual Specifications:**
+- Background: Brand blue gradient (`linear-gradient(135deg, #3B82F6 0%, #2563EB 100%)`)
+- Text color: White
+- Padding: 160px vertical, 80px horizontal
+- Content: Centered vertically and horizontally
+
+**Typography:**
+- Headline: "Start tracking your essentials."
+  - Size: 56px (desktop), 36px (mobile)
+  - Weight: 700
+  - Color: White
+  - Line height: 1.2
+  
+- Subtext: "It's free. Forever."
+  - Size: 20px (desktop), 18px (mobile)
+  - Weight: 400
+  - Color: `rgba(255, 255, 255, 0.9)`
+  - Margin top: 16px
+
+- CTA Button: "Get Started with Microsoft"
+  - White background, brand blue text (inverted from hero)
+  - Same sizing and hover effects as hero CTA
+
+---
+
+#### Section 6: Footer
+
+```
+┌────────────────────────────────────────────────────────────────────┐
+│                                                                    │
+│   KIRANA                          Made with ❤️ by Ved              │
+│                                                                    │
+│   Privacy Policy  •  Terms of Service  •  Support                 │
+│                                                                    │
+│                           © 2025 Kirana                            │
+│                                                                    │
+└────────────────────────────────────────────────────────────────────┘
+```
+
+**Visual Specifications:**
+- Background: `#F9FAFB` (light gray)
+- Padding: 60px vertical, 80px horizontal
+- Layout: Centered text
+- Typography:
+  - Logo: 24px, weight 700, color `#1a1a1a`
+  - Links: 14px, weight 400, color `#666666`
+  - Copyright: 14px, weight 400, color `#999999`
+- Links: Underline on hover, color transition to brand blue
+
+---
+
+**Routing Architecture:**
+
+```
+Public Routes (No Auth Required):
+  /                  → LandingPage component
+
+Protected Routes (Requires Microsoft Entra ID Auth):
+  /dashboard         → Home component (redirect from old /home)
+  /inventory         → InventoryPage component
+  /import            → ImportPage component
+  /shopping-list     → ShoppingListPage component (Phase 2)
+  /insights          → InsightsPage component (Phase 3)
+  /settings          → SettingsPage component
+  /auth/callback     → MSAL redirect handler
+```
+
+**Navigation Behavior:**
+- Unauthenticated users on `/` see landing page
+- Unauthenticated users accessing `/dashboard` → Redirect to `/` with "Sign in to continue" message
+- Authenticated users on `/` → Auto-redirect to `/dashboard`
+- "Sign In" button on landing page → Microsoft Entra ID OAuth flow
+- Post-login redirect → `/dashboard` (default) or returnUrl if specified
+
+**Mobile Optimizations:**
+- Hero: Reduce headline to 32px, single-column layout
+- Features: Stack text above screenshot (not side-by-side)
+- Padding: Reduce to 60px vertical, 24px horizontal
+- CTA button: Full-width on mobile (max 90% viewport width)
+- Footer: Stack logo and links vertically
+
+**Performance Targets:**
+- First Contentful Paint (FCP): <1.5s
+- Largest Contentful Paint (LCP): <2.5s
+- Time to Interactive (TTI): <3.5s
+- Screenshot images: WebP format, lazy-loaded below fold, max 300KB each
+- Total page size: <800KB (including all assets)
+
+**Accessibility:**
+- Semantic HTML: `<main>`, `<section>`, `<nav>`, `<footer>`
+- ARIA labels for interactive elements
+- Skip to main content link (hidden, keyboard accessible)
+- Focus indicators on all interactive elements
+- Alt text for all screenshots (descriptive, not generic)
+- Color contrast: WCAG AA compliant (4.5:1 minimum)
+- Keyboard navigation: Full support for tab order
+
+---
 
 ### 3.1 Home Dashboard
 

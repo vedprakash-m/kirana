@@ -1,0 +1,9 @@
+<svg width="800" height="600" xmlns="http://www.w3.org/2000/svg">
+  <rect width="800" height="600" fill="#F9FAFB"/>
+  <text x="400" y="300" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="36" fill="#9CA3AF" text-anchor="middle">
+    One-Tap Restock
+  </text>
+  <text x="400" y="350" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="20" fill="#D1D5DB" text-anchor="middle">
+    Instant prediction updates
+  </text>
+</svg>

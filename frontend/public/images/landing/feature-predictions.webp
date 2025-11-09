@@ -1,0 +1,9 @@
+<svg width="1000" height="700" xmlns="http://www.w3.org/2000/svg">
+  <rect width="1000" height="700" fill="#F9FAFB"/>
+  <text x="500" y="350" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="36" fill="#9CA3AF" text-anchor="middle">
+    Prediction Timeline
+  </text>
+  <text x="500" y="400" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="20" fill="#D1D5DB" text-anchor="middle">
+    AI-powered consumption patterns
+  </text>
+</svg>

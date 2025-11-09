@@ -78,4 +78,70 @@
   .input-field {
     @apply w-full px-3 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-blue focus:border-transparent;
   }
+  
+  /* Landing Page Typography Classes */
+  .text-hero {
+    font-size: 2rem; /* 32px mobile */
+    line-height: 1.1;
+    letter-spacing: -0.5px;
+  }
+  
+  @media (min-width: 768px) {
+    .text-hero {
+      font-size: 2.5rem; /* 40px tablet */
+    }
+  }
+  
+  @media (min-width: 1024px) {
+    .text-hero {
+      font-size: 4rem; /* 64px desktop */
+    }
+  }
+  
+  .text-feature {
+    font-size: 2rem; /* 32px mobile */
+    line-height: 1.2;
+  }
+  
+  @media (min-width: 1024px) {
+    .text-feature {
+      font-size: 3rem; /* 48px desktop */
+    }
+  }
+  
+  /* Landing Page Section Padding */
+  .section-padding {
+    padding: 3.75rem 1.5rem; /* 60px vertical, 24px horizontal mobile */
+  }
+  
+  @media (min-width: 768px) {
+    .section-padding {
+      padding: 5rem 5rem; /* 80px both desktop */
+    }
+  }
+  
+  @media (min-width: 1024px) {
+    .section-padding {
+      padding: 7.5rem 5rem; /* 120px vertical, 80px horizontal desktop */
+    }
+  }
+  
+  /* Landing Page Shadows */
+  .shadow-hero {
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.1);
+  }
+  
+  /* Parallax Image Optimization */
+  .parallax-image {
+    will-change: transform;
+  }
+}
+
+/* Accessibility: Respect prefers-reduced-motion */
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }
