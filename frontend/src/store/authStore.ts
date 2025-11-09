@@ -164,14 +164,9 @@ export const useAuthStore = create<AuthState>()(
           sessionStorage.removeItem(name);
         },
       } : undefined,
-      partialize: (state) => ({
-        // Only persist these fields (exclude isLoading, error)
-        // SECURITY: refreshToken removed - never stored in frontend
-        isAuthenticated: state.isAuthenticated,
-        user: state.user,
-        accessToken: state.accessToken,
-        tokenExpiry: state.tokenExpiry,
-      }),
+      // Only persist authentication fields (exclude isLoading, error, and action functions)
+      // SECURITY: refreshToken removed - never stored in frontend
+      // Note: We manually filter which fields to persist in getItem/setItem above
     }
   )
 );
