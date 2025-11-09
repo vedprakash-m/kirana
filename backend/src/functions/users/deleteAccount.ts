@@ -1,6 +1,8 @@
 import { app, HttpRequest, HttpResponseInit, InvocationContext } from '@azure/functions';
-import { cosmosDbService } from '../../services/cosmosDbService.js';
-import { validateJWT } from '../../middleware/validateJWT.js';
+import { getCosmosDbService } from '../../services/cosmosDbService';
+import { validateJWT } from '../../middleware/auth';
+import { logAuditEvent, AuditEventType } from '../../services/auditLogger';
+import { ApiResponse, ErrorCode } from '../../types/shared';
 
 /**
  * DELETE /api/users/me
@@ -28,43 +30,55 @@ async function deleteAccount(
   request: HttpRequest,
   context: InvocationContext
 ): Promise<HttpResponseInit> {
+  // Step 1: Validate JWT token
+  const authContext = await validateJWT(request, context);
+  if (!authContext) {
+    const response: ApiResponse<never> = {
+      success: false,
+      error: {
+        code: ErrorCode.AUTH_INVALID,
+        message: 'Unauthorized - valid authentication required'
+      }
+    };
+    return {
+      status: 401,
+      jsonBody: response,
+    };
+  }
+
   try {
-    // Step 1: Parse and validate confirmation
+    // Step 2: Parse and validate confirmation
     let body: { confirmation?: string };
     try {
       const text = await request.text();
       body = text ? JSON.parse(text) : {};
     } catch (parseError) {
       context.error('Invalid JSON in request body:', parseError);
+      const response: ApiResponse<never> = {
+        success: false,
+        error: {
+          code: ErrorCode.VALIDATION_ERROR,
+          message: 'Invalid JSON in request body'
+        }
+      };
       return {
         status: 400,
-        jsonBody: {
-          success: false,
-          error: 'Invalid JSON in request body',
-        },
+        jsonBody: response,
       };
     }
 
     // Require exact confirmation string (case-sensitive)
     if (body.confirmation !== 'DELETE') {
+      const response: ApiResponse<never> = {
+        success: false,
+        error: {
+          code: ErrorCode.VALIDATION_ERROR,
+          message: 'Account deletion requires confirmation. Send { "confirmation": "DELETE" } in request body.'
+        }
+      };
       return {
         status: 400,
-        jsonBody: {
-          success: false,
-          error: 'Account deletion requires confirmation. Send { "confirmation": "DELETE" } in request body.',
-        },
-      };
-    }
-
-    // Step 2: Get authenticated user from JWT (set by validateJWT middleware)
-    const authContext = (request as any).authContext;
-    if (!authContext || !authContext.userId) {
-      return {
-        status: 401,
-        jsonBody: {
-          success: false,
-          error: 'Unauthorized: Invalid authentication token',
-        },
+        jsonBody: response,
       };
     }
 
@@ -72,6 +86,9 @@ async function deleteAccount(
     const userEmail = authContext.email || 'unknown';
 
     context.log(`Starting account deletion for user ${userId} (${userEmail})`);
+
+    // Get Cosmos DB service
+    const cosmosService = await getCosmosDbService();
 
     // Initialize counters for summary
     const summary = {
@@ -83,35 +100,43 @@ async function deleteAccount(
     };
 
     // Step 3: Fetch user profile to verify existence
-    const usersContainer = cosmosDbService.getUsersContainer();
+    const usersContainer = cosmosService.getUsersContainer();
     let userProfile;
     try {
       const { resource } = await usersContainer.item(userId, userId).read();
       userProfile = resource;
       if (!userProfile) {
+        const response: ApiResponse<never> = {
+          success: false,
+          error: {
+            code: ErrorCode.NOT_FOUND,
+            message: 'User profile not found'
+          }
+        };
         return {
           status: 404,
-          jsonBody: {
-            success: false,
-            error: 'User profile not found',
-          },
+          jsonBody: response,
         };
       }
     } catch (error: any) {
       if (error.code === 404) {
+        const response: ApiResponse<never> = {
+          success: false,
+          error: {
+            code: ErrorCode.NOT_FOUND,
+            message: 'User profile not found'
+          }
+        };
         return {
           status: 404,
-          jsonBody: {
-            success: false,
-            error: 'User profile not found',
-          },
+          jsonBody: response,
         };
       }
       throw error;
     }
 
     // Step 4: Handle household memberships and cleanup
-    const householdsContainer = cosmosDbService.getHouseholdsContainer();
+    const householdsContainer = cosmosService.getHouseholdsContainer();
     const householdIds = userProfile.householdIds || [];
 
     context.log(`User is member of ${householdIds.length} household(s)`);
@@ -145,7 +170,7 @@ async function deleteAccount(
           summary.householdsDeleted++;
 
           // Delete all household items (with 90-day TTL for soft delete)
-          const itemsContainer = cosmosDbService.getItemsContainer();
+          const itemsContainer = cosmosService.getItemsContainer();
           const { resources: householdItems } = await itemsContainer.items
             .query({
               query: 'SELECT * FROM c WHERE c.householdId = @householdId AND c.type = @type',
@@ -169,7 +194,7 @@ async function deleteAccount(
           }
 
           // Hard delete all household transactions
-          const transactionsContainer = cosmosDbService.getTransactionsContainer();
+          const transactionsContainer = cosmosService.getTransactionsContainer();
           const { resources: householdTransactions } = await transactionsContainer.items
             .query({
               query: 'SELECT * FROM c WHERE c.householdId = @householdId AND c.type = @type',
@@ -237,7 +262,7 @@ async function deleteAccount(
     }
 
     // Step 5: Delete all user sessions
-    const sessionsContainer = cosmosDbService.getSessionsContainer();
+    const sessionsContainer = cosmosService.getSessionsContainer();
     try {
       const { resources: userSessions } = await sessionsContainer.items
         .query({
@@ -266,26 +291,20 @@ async function deleteAccount(
     }
 
     // Step 6: Create final audit log entry (ACCOUNT_DELETED)
-    const eventsContainer = cosmosDbService.getEventsContainer();
     try {
-      const auditEvent = {
-        id: `event-${Date.now()}-${Math.random().toString(36).substring(7)}`,
-        type: 'audit_log',
-        householdId: householdIds[0] || 'none', // Use first household or 'none'
+      await logAuditEvent({
+        eventType: AuditEventType.ACCOUNT_DELETED,
         userId,
-        eventType: 'ACCOUNT_DELETED',
+        householdId: householdIds[0] || 'none',
         metadata: {
           email: userEmail,
-          summary: {
-            ...summary,
-          },
+          summary,
           deletionConfirmedAt: new Date().toISOString(),
         },
-        timestamp: new Date().toISOString(),
-        ttl: 7776000, // 90 days
-      };
-
-      await eventsContainer.items.create(auditEvent);
+        ipAddress: request.headers.get('x-forwarded-for') || undefined,
+        userAgent: request.headers.get('user-agent') || undefined,
+      }, context);
+      
       context.log('Created ACCOUNT_DELETED audit log entry');
     } catch (error) {
       context.error('Failed to create audit log:', error);
@@ -302,36 +321,41 @@ async function deleteAccount(
     }
 
     // Step 8: Return success response with summary
+    const response: ApiResponse<{ message: string; summary: typeof summary }> = {
+      success: true,
+      data: {
+        message: 'Account deleted successfully',
+        summary,
+      }
+    };
+    
     return {
       status: 200,
-      jsonBody: {
-        success: true,
-        data: {
-          message: 'Account deleted successfully',
-          summary,
-        },
-      },
+      jsonBody: response,
     };
   } catch (error: any) {
     context.error('Account deletion error:', error);
 
+    const response: ApiResponse<never> = {
+      success: false,
+      error: {
+        code: ErrorCode.INTERNAL_ERROR,
+        message: 'Failed to delete account',
+        details: error.message
+      }
+    };
+    
     return {
       status: 500,
-      jsonBody: {
-        success: false,
-        error: 'Failed to delete account',
-        details: error.message,
-      },
+      jsonBody: response,
     };
   }
 }
 
-// Register HTTP trigger with JWT validation middleware
-app.http('deleteAccount', {
+// Register HTTP trigger
+app.http('users-delete-account', {
   methods: ['DELETE'],
-  authLevel: 'anonymous',
+  authLevel: 'function',
   route: 'users/me',
-  handler: async (request: HttpRequest, context: InvocationContext) => {
-    return validateJWT(request, context, deleteAccount);
-  },
+  handler: deleteAccount
 });
