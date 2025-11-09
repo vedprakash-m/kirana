@@ -1,4 +1,5 @@
 // UI Components
+export { Alert, AlertDescription } from './alert';
 export { Button, buttonVariants, type ButtonProps } from './button';
 export { Badge, badgeVariants, type BadgeProps } from './badge';
 export {
