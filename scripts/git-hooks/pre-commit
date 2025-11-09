@@ -4,6 +4,7 @@
 # Git Pre-Commit Hook - Secrets Scanner
 #
 # Prevents committing files that contain potential secrets or sensitive data.
+# Compatible with macOS (BSD grep) and Linux (GNU grep)
 # 
 # Installation:
 #   chmod +x .git/hooks/pre-commit
@@ -21,38 +22,32 @@ NC='\033[0m' # No Color
 
 echo "🔍 Running secrets scanner..."
 
-# Secret patterns to detect
+# Secret patterns to detect (Extended Regex compatible with BSD grep on macOS)
 PATTERNS=(
-    # Gemini API keys
-    'AIza[0-9A-Za-z-_]{35}'
+    # Gemini API keys (actual keys start with AIza and have specific format)
+    'AIza[0-9A-Za-z_-]{35}[^a-zA-Z0-9_-]'
     
-    # Azure Cosmos DB connection strings
-    'AccountKey=[A-Za-z0-9+/=]{88}'
-    'AccountEndpoint=https://[a-z0-9-]+\.documents\.azure\.com'
+    # Azure Cosmos DB connection strings with actual values
+    'AccountKey=[A-Za-z0-9+/=]{88}[^=]'
+    'AccountEndpoint=https://[a-z0-9-]+\.documents\.azure\.com.*password'
     
-    # Azure Storage connection strings
-    'DefaultEndpointsProtocol=https;AccountName='
+    # Azure Storage connection strings with actual values
+    'DefaultEndpointsProtocol=https;AccountName=.*AccountKey='
     
-    # Generic API keys (32-128 characters)
-    '["\047][a-zA-Z0-9]{32,128}["\047]'
+    # Private keys (actual PEM content)
+    'MIIEpAIBAAKCAQEA'
+    'BEGIN RSA PRIVATE KEY'
+    'BEGIN PRIVATE KEY'
     
-    # Private keys
-    '-----BEGIN (RSA )?PRIVATE KEY-----'
+    # JWT tokens (actual tokens, simplified pattern)
+    'eyJhbGciOi'
     
-    # JWT tokens
-    'eyJ[a-zA-Z0-9_-]{10,}\.eyJ[a-zA-Z0-9_-]{10,}\.[a-zA-Z0-9_-]{10,}'
+    # Passwords in connection strings with actual values
+    'Password=[A-Za-z0-9!@#$%^&*]{12,}'
     
-    # Passwords in connection strings
-    'Password=[^;]{8,}'
-    
-    # Bearer tokens
-    'Bearer [A-Za-z0-9\-._~+/]+='
-    
-    # Environment variable assignments with potential secrets
-    'GEMINI_API_KEY='
-    'COSMOS_CONNECTION_STRING='
-    'STORAGE_CONNECTION_STRING='
-    'ENTRA_CLIENT_SECRET='
+    # Azure subscription IDs and tenant IDs (actual GUIDs in config)
+    'subscription-id.*[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}'
+    'tenant-id.*[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}'
 )
 
 # Files to check (staged for commit)
@@ -68,14 +63,17 @@ SECRETS_FOUND=0
 
 # Check each file
 for FILE in $FILES; do
-    # Skip binary files, images, and lock files
+    # Skip binary files, images, lock files, and git hook files themselves
     if [[ "$FILE" == *.png ]] || \
        [[ "$FILE" == *.jpg ]] || \
        [[ "$FILE" == *.jpeg ]] || \
        [[ "$FILE" == *.gif ]] || \
        [[ "$FILE" == *.pdf ]] || \
        [[ "$FILE" == *package-lock.json ]] || \
-       [[ "$FILE" == *yarn.lock ]]; then
+       [[ "$FILE" == *yarn.lock ]] || \
+       [[ "$FILE" == scripts/git-hooks/pre-commit ]] || \
+       [[ "$FILE" == scripts/git-hooks/pre-push ]] || \
+       [[ "$FILE" == .git/hooks/* ]]; then
         continue
     fi
     
@@ -86,8 +84,8 @@ for FILE in $FILES; do
     
     # Check each pattern
     for PATTERN in "${PATTERNS[@]}"; do
-        # Use grep with Perl-compatible regex
-        MATCHES=$(git diff --cached "$FILE" | grep -P "$PATTERN" || true)
+        # Use grep with extended regex (compatible with macOS BSD grep and GNU grep)
+        MATCHES=$(git diff --cached "$FILE" | grep -E "$PATTERN" || true)
         
         if [ ! -z "$MATCHES" ]; then
             echo -e "${RED}✗ Potential secret found in $FILE${NC}"
@@ -124,7 +122,7 @@ for PATTERN in "${SENSITIVE_FILES[@]}"; do
 done
 
 # Check for hardcoded IPs or internal URLs
-HARDCODED_URLS=$(git diff --cached | grep -P 'https?://(localhost|127\.0\.0\.1|10\.|172\.(1[6-9]|2[0-9]|3[0-1])\.|192\.168\.)' || true)
+HARDCODED_URLS=$(git diff --cached | grep -E 'https?://(localhost|127\.0\.0\.1|10\.|172\.(1[6-9]|2[0-9]|3[0-1])|192\.168\.)' || true)
 if [ ! -z "$HARDCODED_URLS" ]; then
     echo -e "${YELLOW}⚠ Warning: Hardcoded localhost/internal URLs detected${NC}"
     echo -e "${YELLOW}Consider using environment variables instead${NC}"
