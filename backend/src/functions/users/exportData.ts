@@ -135,7 +135,8 @@ async function exportData(request: HttpRequest, context: InvocationContext): Pro
         .read<UserProfile>();
       
       if (userProfile) {
-        // Exclude internal fields
+        // Exclude internal fields (_etag, _rid, _self, _attachments, _ts)
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
         const { _etag, ...profileData } = userProfile;
         exportData.profile = profileData;
       }
