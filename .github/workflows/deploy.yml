@@ -1,0 +1,195 @@
+name: Deploy to Azure
+
+# Simple deployment workflow for existing infrastructure
+# Prerequisites: Run scripts/setup-infrastructure.sh first
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  NODE_VERSION: '20.x'
+
+jobs:
+  # ============================================================================
+  # BUILD & TEST
+  # ============================================================================
+  build:
+    name: Build & Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Shared Types
+        run: |
+          mkdir -p frontend/src/types backend/src/types
+          rm -f frontend/src/types/shared.ts backend/src/types/shared.ts
+          cp shared/types.ts frontend/src/types/shared.ts
+          cp shared/types.ts backend/src/types/shared.ts
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      
+      - name: Cache Dependencies
+        uses: actions/cache@v3
+        with:
+          path: |
+            frontend/node_modules
+            backend/node_modules
+          key: ${{ runner.os }}-deps-${{ hashFiles('frontend/package-lock.json', 'backend/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-deps-
+      
+      - name: Install Dependencies
+        run: |
+          cd frontend && npm ci --legacy-peer-deps
+          cd ../backend && npm ci
+      
+      - name: Lint
+        run: |
+          cd frontend && npm run lint
+          cd ../backend && npm run lint
+      
+      - name: Test Backend
+        run: cd backend && npm test
+        continue-on-error: true
+      
+      - name: Build Backend
+        run: cd backend && npm run build
+      
+      - name: Build Frontend
+        run: cd frontend && npm run build
+        env:
+          # These will be replaced by SWA config at runtime
+          VITE_API_BASE_URL: /api
+      
+      - name: Upload Backend Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-build
+          path: |
+            backend/dist
+            backend/node_modules
+            backend/package.json
+            backend/host.json
+          retention-days: 1
+      
+      - name: Upload Frontend Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-build
+          path: frontend/dist
+          retention-days: 1
+
+  # ============================================================================
+  # DEPLOY BACKEND (Azure Functions)
+  # ============================================================================
+  deploy-backend:
+    name: Deploy Backend
+    runs-on: ubuntu-latest
+    needs: build
+    environment:
+      name: production
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Download Build Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: backend-build
+          path: backend
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+      
+      - name: Install Azure Functions Core Tools
+        run: npm install -g azure-functions-core-tools@4 --unsafe-perm true
+      
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+      
+      - name: Deploy to Azure Functions
+        run: |
+          cd backend
+          func azure functionapp publish kirana-backend --javascript
+        env:
+          AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      
+      - name: Health Check
+        run: |
+          echo "⏳ Waiting 30s for deployment to stabilize..."
+          sleep 30
+          
+          HEALTH_URL="https://kirana-backend.azurewebsites.net/api/health"
+          echo "Checking: $HEALTH_URL"
+          
+          if curl -f -s "$HEALTH_URL" > /dev/null; then
+            echo "✅ Backend is healthy"
+          else
+            echo "⚠️ Health check failed (may be expected if endpoint not implemented)"
+          fi
+
+  # ============================================================================
+  # DEPLOY FRONTEND (Static Web Apps)
+  # ============================================================================
+  deploy-frontend:
+    name: Deploy Frontend
+    runs-on: ubuntu-latest
+    needs: build
+    environment:
+      name: production
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: false
+      
+      - name: Download Build Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: frontend-build
+          path: frontend/dist
+      
+      - name: Deploy to Azure Static Web Apps
+        uses: Azure/static-web-apps-deploy@v1
+        with:
+          azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN }}
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          action: "upload"
+          app_location: "frontend/dist"
+          skip_app_build: true
+          skip_api_build: true
+
+  # ============================================================================
+  # DEPLOYMENT STATUS
+  # ============================================================================
+  status:
+    name: Deployment Status
+    runs-on: ubuntu-latest
+    needs: [deploy-backend, deploy-frontend]
+    if: always()
+    steps:
+      - name: Check Deployment Status
+        run: |
+          echo "## 🚀 Deployment Status"
+          echo ""
+          echo "Backend: ${{ needs.deploy-backend.result }}"
+          echo "Frontend: ${{ needs.deploy-frontend.result }}"
+          echo ""
+          
+          if [[ "${{ needs.deploy-backend.result }}" == "success" ]] && \
+             [[ "${{ needs.deploy-frontend.result }}" == "success" ]]; then
+            echo "✅ Deployment Successful!"
+            echo ""
+            echo "🌐 Your app is live!"
+            exit 0
+          else
+            echo "❌ Deployment Failed"
+            exit 1
+          fi

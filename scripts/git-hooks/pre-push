@@ -1,0 +1,28 @@
+#!/bin/bash
+
+# Pre-push hook: reuses pre-commit secret scanner to prevent secrets from being pushed to remote
+# Installation (local dev):
+#   chmod +x .git/hooks/pre-push
+#   ln -sf ../../scripts/git-hooks/pre-push .git/hooks/pre-push
+
+# If the pre-commit script exists, run it against the staged changes (it scans staged files)
+PRE_COMMIT_SCRIPT="scripts/git-hooks/pre-commit"
+
+if [ -f "$PRE_COMMIT_SCRIPT" ]; then
+  echo "🔒 Running pre-push secrets scan via $PRE_COMMIT_SCRIPT"
+  # run the pre-commit scanner; it exits non-zero on detection
+  bash "$PRE_COMMIT_SCRIPT"
+  EXIT_CODE=$?
+  if [ $EXIT_CODE -ne 0 ]; then
+    echo "Pre-push secrets scanner blocked the push. Fix secrets and try again." >&2
+    exit $EXIT_CODE
+  fi
+fi
+
+# Additionally, check for large or sensitive folders accidentally added (like .archive)
+if git ls-files --error-unmatch ".archive" >/dev/null 2>&1; then
+  echo "✗ .archive is tracked in the repo. Remove it before pushing (see .gitignore)." >&2
+  exit 1
+fi
+
+exit 0
