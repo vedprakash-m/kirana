@@ -7,15 +7,22 @@ import { persist } from 'zustand/middleware';
  * Integrated with Microsoft Authentication Library (MSAL) for Azure AD B2C.
  * Stores user info, tokens, and authentication status.
  * 
+ * Security Improvements (v1.1):
+ * - Access tokens stored in sessionStorage (not localStorage) to reduce XSS risk
+ * - Refresh tokens NEVER stored in frontend (HttpOnly cookies only)
+ * - Automatic token refresh via backend /api/auth/refresh endpoint
+ * - Token expiry buffer (5 minutes) for proactive refresh
+ * 
  * Features:
- * - Persistent auth state (survives page refresh)
- * - JWT token management (access + refresh tokens)
+ * - Persistent auth state (survives page refresh via sessionStorage)
+ * - JWT token management (access tokens only)
  * - User profile caching
  * - Sign in/out actions
  * 
  * References:
  * - PRD Section 9.1: Microsoft Entra ID (Azure AD B2C)
- * - Tech Spec Section 3.3: Azure AD B2C + MSAL
+ * - Tech Spec Section 8.1: Authentication & Authorization
+ * - Security Audit (Nov 2025): XSS vulnerability mitigations
  */
 
 export interface User {
@@ -32,12 +39,12 @@ export interface AuthState {
   isLoading: boolean;
   user: User | null;
   accessToken: string | null;
-  refreshToken: string | null;
+  // SECURITY: refreshToken removed - handled server-side via HttpOnly cookies
   tokenExpiry: number | null; // Unix timestamp (ms)
   error: string | null;
 
   // Actions
-  signIn: (user: User, accessToken: string, refreshToken: string, expiresIn: number) => void;
+  signIn: (user: User, accessToken: string, expiresIn: number) => void;
   signOut: () => void;
   setUser: (user: User) => void;
   setLoading: (isLoading: boolean) => void;
@@ -54,8 +61,8 @@ export interface AuthState {
  * ```tsx
  * const { isAuthenticated, user, signIn, signOut } = useAuthStore();
  * 
- * // Sign in
- * signIn(user, accessToken, refreshToken, 3600);
+ * // Sign in (refresh token handled server-side)
+ * signIn(user, accessToken, 3600);
  * 
  * // Check auth
  * if (isAuthenticated && !isTokenExpired()) {
@@ -74,12 +81,11 @@ export const useAuthStore = create<AuthState>()(
       isLoading: false,
       user: null,
       accessToken: null,
-      refreshToken: null,
       tokenExpiry: null,
       error: null,
 
       // Actions
-      signIn: (user, accessToken, refreshToken, expiresIn) => {
+      signIn: (user, accessToken, expiresIn) => {
         const tokenExpiry = Date.now() + expiresIn * 1000; // Convert seconds to ms
         
         set({
@@ -87,7 +93,6 @@ export const useAuthStore = create<AuthState>()(
           isLoading: false,
           user,
           accessToken,
-          refreshToken,
           tokenExpiry,
           error: null,
         });
@@ -101,7 +106,6 @@ export const useAuthStore = create<AuthState>()(
           isLoading: false,
           user: null,
           accessToken: null,
-          refreshToken: null,
           tokenExpiry: null,
           error: null,
         });
@@ -147,13 +151,25 @@ export const useAuthStore = create<AuthState>()(
       },
     }),
     {
-      name: 'kirana-auth-storage', // LocalStorage key
+      name: 'kirana-auth-storage', // sessionStorage key (changed from localStorage)
+      storage: typeof window !== 'undefined' ? {
+        getItem: (name) => {
+          const value = sessionStorage.getItem(name);
+          return value ? JSON.parse(value) : null;
+        },
+        setItem: (name, value) => {
+          sessionStorage.setItem(name, JSON.stringify(value));
+        },
+        removeItem: (name) => {
+          sessionStorage.removeItem(name);
+        },
+      } : undefined,
       partialize: (state) => ({
         // Only persist these fields (exclude isLoading, error)
+        // SECURITY: refreshToken removed - never stored in frontend
         isAuthenticated: state.isAuthenticated,
         user: state.user,
         accessToken: state.accessToken,
-        refreshToken: state.refreshToken,
         tokenExpiry: state.tokenExpiry,
       }),
     }

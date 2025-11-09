@@ -225,7 +225,7 @@ This document provides a comprehensive security audit of the Kirana backend agai
 3. **CORS Configuration:**
    ```json
    {
-     "origins": ["https://kirana.app"],
+     "origins": ["https://kirana.vedprakash.net"],
      "methods": ["GET", "POST", "PUT", "DELETE"],
      "allowCredentials": true
    }
@@ -644,7 +644,7 @@ All critical and high-severity issues resolved.
 
 ### Contact Information
 
-- **Security Lead:** [security@kirana.app](mailto:security@kirana.app)
+- **Security Lead:** [security@vedprakash.net](mailto:security@vedprakash.net)
 - **On-Call:** [Azure Monitor alert → PagerDuty]
 - **Vendor Support:** Azure Support (Premium tier)
 

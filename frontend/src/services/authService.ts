@@ -1,4 +1,4 @@
-import { PublicClientApplication, InteractionRequiredAuthError } from '@azure/msal-browser';
+import { PublicClientApplication } from '@azure/msal-browser';
 import type { Configuration, AccountInfo, AuthenticationResult } from '@azure/msal-browser';
 import { useAuthStore } from '@/store/authStore';
 import type { User } from '@/store/authStore';
@@ -9,10 +9,17 @@ import type { User } from '@/store/authStore';
  * Implements authentication flow using Microsoft Authentication Library (MSAL).
  * Supports sign-in, sign-out, token refresh, and silent authentication.
  * 
+ * Security Improvements (v1.1):
+ * - Refresh tokens stored in HttpOnly cookies (backend-managed)
+ * - Access tokens in sessionStorage via authStore
+ * - Automatic token refresh via backend /api/auth/refresh endpoint
+ * - Token rotation on every refresh for improved security
+ * 
  * References:
  * - PRD Section 9.1: Microsoft Entra ID (Azure AD B2C)
- * - Tech Spec Section 3.3: Azure AD B2C + MSAL
- * - MSAL Docs: https://learn.microsoft.com/azure/active-directory/develop/msal-js-initializing-client-applications
+ * - Tech Spec Section 8.1: Authentication & Authorization
+ * - Tech Spec Section 8.5: Session Management & Device Tracking
+ * - Security Audit (Nov 2025): Frontend token storage vulnerability fix
  */
 
 // MSAL Configuration
@@ -159,48 +166,55 @@ export async function signOut(): Promise<void> {
 
 /**
  * Get access token (silently)
- * Automatically refreshes token if expired
+ * Automatically refreshes token if expired using backend refresh endpoint
  */
 export async function getAccessToken(): Promise<string | null> {
   try {
-    const account = msalInstance.getActiveAccount();
-    if (!account) {
-      return null;
-    }
-
-    // Check if token is expired in Zustand store
-    const { isTokenExpired } = useAuthStore.getState();
-    if (!isTokenExpired()) {
-      // Token is still valid in store
-      const { accessToken } = useAuthStore.getState();
+    const { accessToken, isTokenExpired } = useAuthStore.getState();
+    
+    // Return cached token if still valid
+    if (accessToken && !isTokenExpired()) {
       return accessToken;
     }
 
-    // Token is expired, acquire new one silently
-    const response = await msalInstance.acquireTokenSilent({
-      ...loginRequest,
-      account,
-      forceRefresh: false, // Use cached token if available
+    // Token expired - refresh via backend endpoint
+    console.log('🔄 Access token expired, refreshing...');
+    
+    const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/auth/refresh`, {
+      method: 'POST',
+      credentials: 'include', // Important: sends HttpOnly cookie
+      headers: {
+        'Content-Type': 'application/json',
+      },
     });
 
-    // Update store with new token
+    if (!response.ok) {
+      // Refresh failed - user needs to sign in again
+      console.warn('Token refresh failed:', response.status);
+      useAuthStore.getState().signOut();
+      return null;
+    }
+
+    const data = await response.json();
+    
+    if (!data.success || !data.data.accessToken) {
+      console.warn('Invalid refresh response');
+      useAuthStore.getState().signOut();
+      return null;
+    }
+
+    // Update store with new access token
+    // Note: New refresh token is automatically set in HttpOnly cookie by backend
     useAuthStore.getState().refreshAccessToken(
-      response.accessToken,
-      response.expiresOn ? Math.floor((response.expiresOn.getTime() - Date.now()) / 1000) : 3600
+      data.data.accessToken,
+      data.data.expiresIn || 3600
     );
 
-    return response.accessToken;
+    console.log('✅ Access token refreshed successfully');
+    return data.data.accessToken;
   } catch (error) {
-    if (error instanceof InteractionRequiredAuthError) {
-      // Token refresh failed, user needs to sign in again
-      console.warn('Token refresh requires interaction:', error);
-      useAuthStore.getState().signOut();
-      
-      // Optionally trigger sign in flow
-      // await signInWithPopup();
-    } else {
-      console.error('Token acquisition error:', error);
-    }
+    console.error('Token refresh error:', error);
+    useAuthStore.getState().signOut();
     return null;
   }
 }
@@ -231,11 +245,10 @@ function handleAuthResponse(response: AuthenticationResult): void {
     ? Math.floor((response.expiresOn.getTime() - Date.now()) / 1000)
     : 3600; // 1 hour
 
-  // Update auth store
+  // Update auth store (no refresh token - handled server-side)
   useAuthStore.getState().signIn(
     user,
     response.accessToken,
-    response.idToken, // Use ID token as refresh token (Azure AD B2C doesn't return separate refresh token)
     expiresIn
   );
 }

@@ -20,6 +20,9 @@ export class CosmosDbService {
     parseJobs?: Container;
     events?: Container;
     costTracking?: Container;
+    users?: Container;
+    invitations?: Container;
+    sessions?: Container;
   } = {};
   
   constructor() {
@@ -51,6 +54,9 @@ export class CosmosDbService {
       this.containers.parseJobs = this.database.container('parseJobs');
       this.containers.events = this.database.container('events');
       this.containers.costTracking = this.database.container('costTracking');
+      this.containers.users = this.database.container('users');
+      this.containers.invitations = this.database.container('invitations');
+      this.containers.sessions = this.database.container('sessions');
       
       console.log(`✅ Connected to Cosmos DB database: ${databaseId}`);
     } catch (error) {
@@ -130,10 +136,40 @@ export class CosmosDbService {
   }
   
   /**
+   * Get Users container
+   */
+  getUsersContainer(): Container {
+    if (!this.containers.users) {
+      throw new Error('Users container not initialized. Call initialize() first.');
+    }
+    return this.containers.users;
+  }
+  
+  /**
+   * Get Invitations container (Phase 2.2)
+   */
+  getInvitationsContainer(): Container {
+    if (!this.containers.invitations) {
+      throw new Error('Invitations container not initialized. Call initialize() first.');
+    }
+    return this.containers.invitations;
+  }
+  
+  /**
+   * Get Sessions container (Phase 2.3)
+   */
+  getSessionsContainer(): Container {
+    if (!this.containers.sessions) {
+      throw new Error('Sessions container not initialized. Call initialize() first.');
+    }
+    return this.containers.sessions;
+  }
+  
+  /**
    * Check if service is initialized
    */
   isInitialized(): boolean {
-    return this.database !== null && Object.keys(this.containers).length === 7;
+    return this.database !== null && Object.keys(this.containers).length === 10;
   }
 }
 

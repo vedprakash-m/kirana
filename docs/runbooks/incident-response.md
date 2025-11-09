@@ -299,7 +299,7 @@ curl -X GET "https://kirana-api.azurewebsites.net/api/admin/oauth/config" \
 ```json
 {
   "clientId": "xxx.apps.googleusercontent.com",
-  "redirectUri": "https://kirana.app/auth/gmail/callback",
+  "redirectUri": "https://kirana.vedprakash.net/auth/gmail/callback",
   "scopes": ["https://www.googleapis.com/auth/gmail.readonly"],
   "registered": true
 }
@@ -334,7 +334,7 @@ curl -X GET "https://kirana-api.azurewebsites.net/api/auth/gmail/authorize?userI
 **Manually Test:**
 1. Open redirect URL in browser
 2. Complete OAuth flow
-3. Verify callback redirects to `https://kirana.app/auth/gmail/callback?code=...`
+3. Verify callback redirects to `https://kirana.vedprakash.net/auth/gmail/callback?code=...`
 
 ### Mitigation Actions (5-30 minutes)
 
@@ -344,7 +344,7 @@ If callback URL mismatch detected:
 
 1. Go to [Google Cloud Console](https://console.cloud.google.com/apis/credentials)
 2. Navigate to: APIs & Services → Credentials → OAuth 2.0 Client IDs → "Kirana Web App"
-3. Add authorized redirect URI: `https://kirana.app/auth/gmail/callback`
+3. Add authorized redirect URI: `https://kirana.vedprakash.net/auth/gmail/callback`
 4. Remove old/invalid URIs
 5. Wait 5 minutes for propagation
 

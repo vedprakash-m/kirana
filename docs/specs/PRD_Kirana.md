@@ -69,6 +69,11 @@ Kirana provides the simplest path from “I’m running low” to “It’s reor
 | Gmail OAuth (Phase 2)   | Gmail API connection seeds inventory from last 90 days; explicit opt-in consent with plain-language privacy policy; requires Google verification completion |
 | PWA Compliance          | Responsive web app works on desktop, tablet, mobile; service worker enables offline caching; push notifications (Phase 2+) |
 | LLM Cost Containment    | Operational budget cap at $50/day with real-time dashboard; automatic degradation to queue-based processing (NOT fuzzy matching) if exceeded; per-user throttle at $0.20/month in Phase 1-2, $0.10/month in Phase 3+ |
+| User Authentication (P0)| Microsoft Entra ID OAuth 2.0 with JWT token validation; all endpoints require valid authentication; household-based authorization prevents cross-user data access |
+| User Profile Management (P1)| Users can view/edit profile (displayName, email preferences); timezone/currency selection; profile data persisted in backend database |
+| Household Invitations (P2)| Admin users can invite family members via email; invitation links with 7-day expiry; new members join existing household with member role |
+| Data Privacy & GDPR (P0)| One-click data export (JSON format); user deletion with cascade delete; privacy policy accessible; 90-day audit log retention; email body auto-deletion after parsing |
+| Session Management (P1) | Users can view active sessions; "sign out all devices" feature; last login timestamp displayed; device tracking for security |
 
 ---
 
@@ -165,7 +170,7 @@ Kirana provides the simplest path from “I’m running low” to “It’s reor
      - De-emphasized in onboarding (not shown until user explicitly asks or completes CSV/Teach Mode)
   
   4. **Email Forwarding (P1 — Opt-in Beta Validation):**
-     - User forwards receipts to `receipts@kirana.app` → Azure Functions → same OCR/LLM pipeline as photo upload
+     - User forwards receipts to `receipts@vedprakash.net` → Azure Functions → same OCR/LLM pipeline as photo upload
      - Dedicated regex parser per major retailer (Amazon, Costco) with fallback to generic LLM parser
      - **Explicit consent UI:** "Email forwarding is experimental. We'll extract purchase data and delete the original email within 30 days. [Learn more about privacy]"
      - **Silent Failure Detection (Critical):** 
@@ -580,7 +585,7 @@ Kirana provides the simplest path from “I’m running low” to “It’s reor
   - All Phase 3 exit criteria met (50% 30-day retention, 60% WAU, <30% override rate, <$0.15/user LLM cost)
   - Privacy policy and terms of service finalized (legal review completed)
   - Baseline privacy controls implemented (opt-in consent, data deletion, retention policies)
-  - Customer support plan in place (email support@kirana.app, in-app chat widget, comprehensive FAQ)
+  - Customer support plan in place (email support@vedprakash.net, in-app chat widget, comprehensive FAQ)
   - Incident response playbook for outages, data breaches, LLM failures, silent parsing failures
   - Infrastructure load testing passed (1000+ concurrent users, 100 req/sec)
   - Security audit completed (external review recommended; TLS encryption, access logs, secure Blob storage)
@@ -608,7 +613,7 @@ Kirana provides the simplest path from “I’m running low” to “It’s reor
   - Alert click-through rates (if enabled)
 
 - **Support Plan:**
-  - Email: support@kirana.app (response time <24 hours)
+  - Email: support@vedprakash.net (response time <24 hours)
   - In-app chat widget (link to FAQ and email support)
   - Comprehensive FAQ covering: onboarding, privacy, Gmail OAuth, data deletion, prediction accuracy
   - Community forum (consider Discord or Reddit for user-to-user support)

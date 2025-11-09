@@ -35,6 +35,7 @@ import jwt from 'jsonwebtoken';
 import jwksClient from 'jwks-rsa';
 import { HttpRequest, InvocationContext } from '@azure/functions';
 import { getCosmosDbService } from '../services/cosmosDbService';
+import { UserProfile } from '../types/shared';
 
 /**
  * Authentication context attached to request after successful JWT validation
@@ -51,6 +52,9 @@ export interface AuthContext {
   
   /** User roles (admin, member, etc.) from JWT roles claim */
   roles: string[];
+  
+  /** User profile from users container (Phase 2) */
+  userProfile: UserProfile;
 }
 
 /**
@@ -168,6 +172,9 @@ export async function validateJWT(
       householdIds.push(newHouseholdId);
     }
 
+    // Auto-provision user profile (Phase 2.1.2)
+    const userProfile = await provisionUserProfile(userId, email, context);
+
     context.info(`User authenticated: ${userId} (${householdIds.length} households)`);
 
     return {
@@ -175,6 +182,7 @@ export async function validateJWT(
       email,
       householdIds,
       roles,
+      userProfile,
     };
   } catch (error: any) {
     if (error.name === 'TokenExpiredError') {
@@ -263,6 +271,111 @@ async function createDefaultHousehold(
   context.info(`Created default household: ${householdId} for user: ${userId}`);
   
   return householdId;
+}
+
+/**
+ * Provision user profile on first login (Phase 2.1.2)
+ * 
+ * Checks if user profile exists in users container. If not found (first login),
+ * creates a new profile with defaults. If exists, updates lastLoginAt.
+ * 
+ * @param userId - User ID from JWT sub claim
+ * @param email - User email from JWT email claim
+ * @param context - Function invocation context
+ * @returns UserProfile (existing or newly created)
+ */
+async function provisionUserProfile(
+  userId: string,
+  email: string,
+  context: InvocationContext
+): Promise<UserProfile> {
+  try {
+    const cosmosService = await getCosmosDbService();
+    const container = cosmosService.getUsersContainer();
+    
+    // Check if user profile exists
+    try {
+      const { resource: existingProfile } = await container.item(userId, userId).read<UserProfile>();
+      
+      if (existingProfile) {
+        // User profile exists - update lastLoginAt
+        const updatedProfile: UserProfile = {
+          ...existingProfile,
+          lastLoginAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        };
+        
+        await container.item(userId, userId).replace(updatedProfile);
+        
+        context.info(`Updated lastLoginAt for user: ${userId}`);
+        return updatedProfile;
+      }
+    } catch (error: any) {
+      // Profile doesn't exist (404) - create new one
+      if (error.code === 404) {
+        context.info(`First login detected - creating user profile for: ${userId}`);
+        
+        // Extract display name from email (before @)
+        const displayName = email.split('@')[0];
+        
+        const now = new Date().toISOString();
+        
+        const newProfile: UserProfile = {
+          id: userId,
+          type: 'user_profile',
+          userId,
+          email,
+          displayName,
+          timezone: 'America/Los_Angeles', // Default timezone
+          currency: 'USD', // Default currency
+          preferences: {
+            emailNotifications: false,
+            pushNotifications: false,
+            weeklyDigest: false,
+          },
+          createdAt: now,
+          lastLoginAt: now,
+          updatedAt: now,
+        };
+        
+        await container.items.create(newProfile);
+        
+        context.info(`Created user profile for: ${userId} with displayName: ${displayName}`);
+        return newProfile;
+      }
+      
+      // Unexpected error - rethrow
+      throw error;
+    }
+    
+    // Fallback (shouldn't reach here, but TypeScript requires it)
+    throw new Error('Unexpected state in provisionUserProfile');
+    
+  } catch (error: any) {
+    context.error(`Error provisioning user profile for ${userId}:`, error);
+    
+    // Return minimal profile to avoid breaking authentication
+    // This ensures auth doesn't fail even if profile creation fails
+    const fallbackProfile: UserProfile = {
+      id: userId,
+      type: 'user_profile',
+      userId,
+      email,
+      displayName: email.split('@')[0],
+      timezone: 'America/Los_Angeles',
+      currency: 'USD',
+      preferences: {
+        emailNotifications: false,
+        pushNotifications: false,
+        weeklyDigest: false,
+      },
+      createdAt: new Date().toISOString(),
+      lastLoginAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    
+    return fallbackProfile;
+  }
 }
 
 /**

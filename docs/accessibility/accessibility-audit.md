@@ -401,7 +401,7 @@ function InventoryList() {
 **Command:**
 
 ```bash
-npx lighthouse https://kirana.app --only-categories=accessibility --output=html --output-path=./accessibility-report.html
+npx lighthouse https://kirana.vedprakash.net --only-categories=accessibility --output=html --output-path=./accessibility-report.html
 ```
 
 **Results:**

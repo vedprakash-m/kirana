@@ -597,7 +597,7 @@ UnitNormalizer.canonicalizeItemName(rawText)
 
 ### 4.1 RESTful API Conventions
 
-**Base URL:** `https://api.kirana.app/v1`
+**Base URL:** `https://api.kirana.vedprakash.net/v1`
 
 **Authentication:** Bearer token (JWT from Entra ID)
 
@@ -2342,12 +2342,461 @@ export async function validateHouseholdAccess(
 }
 ```
 
-**Security Requirements:**
-- All Azure Functions must have `authLevel: 'function'` in production (NEVER `'anonymous'`)
-- JWT validation middleware MUST be first in middleware chain
-- Household authorization MUST validate user membership before data access
-- Audit log ALL failed authentication/authorization attempts
-- Rate limit authentication endpoints (5 attempts per 15 minutes)
+### 8.2 User Profile & Data Management
+
+**User Profile Schema** (Cosmos DB `users` container):
+
+```json
+{
+  "id": "user-{entraId}",
+  "entraId": "00000000-0000-0000-0000-000000000000",
+  "email": "user@example.com",
+  "displayName": "John Doe",
+  "householdIds": ["household-123", "household-456"],
+  "preferences": {
+    "emailNotifications": true,
+    "pushNotifications": false,
+    "weeklyDigest": true,
+    "timezone": "America/Los_Angeles",
+    "currency": "USD"
+  },
+  "createdAt": "2025-11-08T00:00:00Z",
+  "lastLoginAt": "2025-11-08T12:00:00Z",
+  "lastLoginIp": "192.168.1.1",
+  "_etag": "auto-generated"
+}
+```
+
+**Profile Management Endpoints:**
+
+| Endpoint | Method | Description | Auth Required |
+|----------|--------|-------------|---------------|
+| `/api/users/me` | GET | Get current user profile | Yes |
+| `/api/users/me` | PATCH | Update profile (displayName, preferences) | Yes |
+| `/api/users/me/sessions` | GET | List active sessions | Yes |
+| `/api/users/me/sessions/:sessionId` | DELETE | Sign out specific session | Yes |
+| `/api/users/me/sessions` | DELETE | Sign out all devices | Yes |
+| `/api/users/me/export` | GET | Export all user data (GDPR) | Yes |
+| `/api/users/me` | DELETE | Delete account with cascade | Yes |
+
+**First-Time User Auto-Provisioning:**
+
+```typescript
+// In validateJWT() after extracting claims
+async function provisionUserProfile(userId: string, email: string): Promise<void> {
+  const cosmosDb = await getCosmosDbService();
+  const usersContainer = cosmosDb.getUsersContainer();
+  
+  const existingUser = await usersContainer.item(`user-${userId}`, userId).read();
+  if (existingUser.resource) {
+    // Update last login
+    await usersContainer.item(`user-${userId}`, userId).replace({
+      ...existingUser.resource,
+      lastLoginAt: new Date().toISOString(),
+      lastLoginIp: req.headers.get('x-forwarded-for') || 'unknown',
+    });
+    return;
+  }
+  
+  // Create new user profile
+  await usersContainer.items.create({
+    id: `user-${userId}`,
+    entraId: userId,
+    email,
+    displayName: email.split('@')[0],
+    householdIds: [],
+    preferences: {
+      emailNotifications: true,
+      pushNotifications: false,
+      weeklyDigest: true,
+      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      currency: 'USD'
+    },
+    createdAt: new Date().toISOString(),
+    lastLoginAt: new Date().toISOString(),
+    lastLoginIp: req.headers.get('x-forwarded-for') || 'unknown',
+  });
+}
+```
+
+### 8.3 Role-Based Access Control (RBAC)
+
+**Roles:**
+```typescript
+export enum HouseholdRole {
+  ADMIN = 'admin',   // Full CRUD on household, can invite/remove members
+  MEMBER = 'member'  // Read/write on items/transactions, cannot manage household
+}
+```
+
+**Admin-Only Operations:**
+- Invite new household members
+- Remove household members
+- Update household settings (name, timezone, currency)
+- Delete household
+- View admin cost dashboard (system-level role)
+
+**Role Enforcement:**
+
+```typescript
+async function validateAdminAccess(
+  authContext: AuthContext,
+  householdId: string,
+  context: InvocationContext
+): Promise<boolean> {
+  const cosmosDb = await getCosmosDbService();
+  const container = cosmosDb.getHouseholdsContainer();
+  
+  const household = await container.item(householdId, householdId).read();
+  if (!household.resource) return false;
+  
+  const member = household.resource.members.find(m => m.userId === authContext.userId);
+  if (!member || member.role !== 'admin') {
+    context.warn(`User ${authContext.userId} attempted admin action without admin role`);
+    return false;
+  }
+  
+  return true;
+}
+
+// System admin validation (for cost dashboard)
+async function validateSystemAdminAccess(
+  request: HttpRequest,
+  context: InvocationContext
+): Promise<boolean> {
+  const authContext = await validateJWT(request, context);
+  if (!authContext) return false;
+  
+  const isAdmin = authContext.roles.includes('admin');
+  if (!isAdmin) {
+    context.warn(`User ${authContext.userId} attempted system admin access without role`);
+    return false;
+  }
+  return true;
+}
+```
+
+### 8.4 Household Invitation System (Phase 2)
+
+**Invitation Flow:**
+
+1. **Admin sends invitation** (`POST /api/households/:householdId/invite`)
+   - Input: `{ email: string, role: 'member' }`
+   - Backend creates invitation record with 7-day expiry
+   - Sends email with magic link
+   
+2. **Recipient accepts invitation** (`POST /api/invites/:inviteCode/accept`)
+   - Validates invite (not expired, not already used)
+   - Adds user to household members array
+   - Creates notification for admin
+
+**Invitation Schema** (Cosmos DB `invitations` container):
+
+```json
+{
+  "id": "invite-{uuid}",
+  "householdId": "household-123",
+  "invitedBy": "user-abc",
+  "invitedEmail": "newmember@example.com",
+  "role": "member",
+  "inviteCode": "abc123def456",
+  "status": "pending",
+  "createdAt": "2025-11-08T00:00:00Z",
+  "expiresAt": "2025-11-15T00:00:00Z",
+  "acceptedAt": null,
+  "acceptedBy": null,
+  "ttl": 604800
+}
+```
+
+**Implementation:**
+
+```typescript
+// POST /api/households/:householdId/invite
+async function inviteMember(request: HttpRequest, context: InvocationContext): Promise<HttpResponseInit> {
+  const authContext = await validateJWT(request, context);
+  if (!authContext) {
+    return { status: 401, jsonBody: { error: 'Unauthorized' } };
+  }
+  
+  const householdId = request.params.householdId;
+  
+  // Validate admin access
+  if (!await validateAdminAccess(authContext, householdId, context)) {
+    return { status: 403, jsonBody: { error: 'Admin access required' } };
+  }
+  
+  const { email, role } = await request.json();
+  
+  // Create invitation
+  const inviteCode = crypto.randomBytes(16).toString('hex');
+  const invitation = {
+    id: `invite-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`,
+    householdId,
+    invitedBy: authContext.userId,
+    invitedEmail: email,
+    role: role || 'member',
+    inviteCode,
+    status: 'pending',
+    createdAt: new Date().toISOString(),
+    expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+    ttl: 604800,
+  };
+  
+  const cosmosDb = await getCosmosDbService();
+  await cosmosDb.getInvitationsContainer().items.create(invitation);
+  
+  // Send invitation email
+  await sendInvitationEmail(email, inviteCode, householdId);
+  
+  return { status: 201, jsonBody: { inviteCode } };
+}
+```
+
+### 8.5 Session Management & Device Tracking
+
+**Session Schema** (Cosmos DB `sessions` container):
+
+```json
+{
+  "id": "session-{uuid}",
+  "userId": "user-abc",
+  "deviceInfo": {
+    "userAgent": "Mozilla/5.0...",
+    "deviceType": "desktop",
+    "browser": "Chrome 120",
+    "os": "macOS"
+  },
+  "ipAddress": "192.168.1.1",
+  "createdAt": "2025-11-08T12:00:00Z",
+  "lastActivity": "2025-11-08T14:30:00Z",
+  "expiresAt": "2025-11-15T12:00:00Z",
+  "ttl": 604800
+}
+```
+
+**Session Lifecycle:**
+- Create session on login (JWT issuance)
+- Update `lastActivity` on each authenticated request (throttled to 1 min intervals)
+- Auto-expire after 7 days of inactivity (TTL)
+- Manual revocation via "sign out" or "sign out all devices"
+
+**Implementation:**
+
+```typescript
+// GET /api/users/me/sessions
+async function listSessions(request: HttpRequest, context: InvocationContext): Promise<HttpResponseInit> {
+  const authContext = await validateJWT(request, context);
+  if (!authContext) {
+    return { status: 401, jsonBody: { error: 'Unauthorized' } };
+  }
+  
+  const cosmosDb = await getCosmosDbService();
+  const container = cosmosDb.getSessionsContainer();
+  
+  const { resources } = await container.items
+    .query({
+      query: 'SELECT * FROM c WHERE c.userId = @userId AND c.expiresAt > @now ORDER BY c.lastActivity DESC',
+      parameters: [
+        { name: '@userId', value: authContext.userId },
+        { name: '@now', value: new Date().toISOString() },
+      ],
+    })
+    .fetchAll();
+  
+  return { status: 200, jsonBody: resources };
+}
+
+// DELETE /api/users/me/sessions (sign out all devices)
+async function signOutAllDevices(request: HttpRequest, context: InvocationContext): Promise<HttpResponseInit> {
+  const authContext = await validateJWT(request, context);
+  if (!authContext) {
+    return { status: 401, jsonBody: { error: 'Unauthorized' } };
+  }
+  
+  const cosmosDb = await getCosmosDbService();
+  const container = cosmosDb.getSessionsContainer();
+  
+  // Delete all sessions except current
+  const currentSessionId = request.headers.get('x-session-id');
+  const { resources } = await container.items
+    .query({
+      query: 'SELECT c.id FROM c WHERE c.userId = @userId',
+      parameters: [{ name: '@userId', value: authContext.userId }],
+    })
+    .fetchAll();
+  
+  for (const session of resources) {
+    if (session.id !== currentSessionId) {
+      await container.item(session.id, authContext.userId).delete();
+    }
+  }
+  
+  return { status: 204 };
+}
+```
+
+### 8.6 Audit Logging & GDPR Compliance
+
+**Event Types:**
+```typescript
+export enum AuditEventType {
+  AUTH_FAILED = 'AUTH_FAILED',
+  ACCESS_DENIED = 'ACCESS_DENIED',
+  ITEM_ACCESS = 'ITEM_ACCESS',
+  ITEM_MODIFIED = 'ITEM_MODIFIED',
+  TRANSACTION_CREATED = 'TRANSACTION_CREATED',
+  DATA_EXPORTED = 'DATA_EXPORTED',
+  USER_DELETED = 'USER_DELETED',
+}
+```
+
+**Audit Log Schema** (Cosmos DB `events` container):
+
+```json
+{
+  "id": "audit-{uuid}",
+  "type": "audit_log",
+  "eventType": "ACCESS_DENIED",
+  "timestamp": "2025-11-08T12:00:00Z",
+  "userId": "user-abc",
+  "requestedHouseholdId": "household-999",
+  "userHouseholdIds": ["household-123"],
+  "authorized": false,
+  "details": "User attempted to access household without membership",
+  "ipAddress": "192.168.1.1",
+  "userAgent": "Mozilla/5.0...",
+  "ttl": 7776000
+}
+```
+
+**GDPR Features:**
+
+1. **Data Export** (`GET /api/users/me/export`):
+   - Returns JSON file with all user data
+   - Includes: profile, items, transactions, audit logs, households
+   - Triggers `DATA_EXPORTED` audit event
+
+2. **Account Deletion** (`DELETE /api/users/me`):
+   - Cascade delete all user data:
+     - Soft delete items (set `deletedAt`, keep for audit)
+     - Hard delete transactions (privacy requirement)
+     - Remove from household members arrays
+     - Delete audit logs (after 90-day retention)
+   - Triggers `USER_DELETED` audit event
+   - Returns confirmation message
+
+**Implementation:**
+
+```typescript
+// GET /api/users/me/export
+async function exportUserData(request: HttpRequest, context: InvocationContext): Promise<HttpResponseInit> {
+  const authContext = await validateJWT(request, context);
+  if (!authContext) {
+    return { status: 401, jsonBody: { error: 'Unauthorized' } };
+  }
+  
+  const cosmosDb = await getCosmosDbService();
+  
+  // Collect all user data
+  const profile = await cosmosDb.getUsersContainer().item(`user-${authContext.userId}`, authContext.userId).read();
+  const items = await cosmosDb.getItemsContainer().items.query({
+    query: 'SELECT * FROM c WHERE c.createdBy = @userId',
+    parameters: [{ name: '@userId', value: authContext.userId }],
+  }).fetchAll();
+  const transactions = await cosmosDb.getTransactionsContainer().items.query({
+    query: 'SELECT * FROM c WHERE c.createdBy = @userId',
+    parameters: [{ name: '@userId', value: authContext.userId }],
+  }).fetchAll();
+  const auditLogs = await cosmosDb.getEventsContainer().items.query({
+    query: 'SELECT * FROM c WHERE c.userId = @userId',
+    parameters: [{ name: '@userId', value: authContext.userId }],
+  }).fetchAll();
+  
+  // Log export event
+  await logAuditEvent(AuditEventType.DATA_EXPORTED, authContext.userId, {});
+  
+  return {
+    status: 200,
+    jsonBody: {
+      profile: profile.resource,
+      items: items.resources,
+      transactions: transactions.resources,
+      auditLogs: auditLogs.resources,
+      exportedAt: new Date().toISOString(),
+    },
+  };
+}
+
+// DELETE /api/users/me
+async function deleteAccount(request: HttpRequest, context: InvocationContext): Promise<HttpResponseInit> {
+  const authContext = await validateJWT(request, context);
+  if (!authContext) {
+    return { status: 401, jsonBody: { error: 'Unauthorized' } };
+  }
+  
+  const cosmosDb = await getCosmosDbService();
+  
+  // Log deletion event BEFORE deleting
+  await logAuditEvent(AuditEventType.USER_DELETED, authContext.userId, {});
+  
+  // Soft delete items
+  const items = await cosmosDb.getItemsContainer().items.query({
+    query: 'SELECT * FROM c WHERE c.createdBy = @userId',
+    parameters: [{ name: '@userId', value: authContext.userId }],
+  }).fetchAll();
+  
+  for (const item of items.resources) {
+    await cosmosDb.getItemsContainer().item(item.id, item.householdId).replace({
+      ...item,
+      deletedAt: new Date().toISOString(),
+      deletedBy: authContext.userId,
+    });
+  }
+  
+  // Hard delete transactions (privacy)
+  const transactions = await cosmosDb.getTransactionsContainer().items.query({
+    query: 'SELECT c.id, c.householdId FROM c WHERE c.createdBy = @userId',
+    parameters: [{ name: '@userId', value: authContext.userId }],
+  }).fetchAll();
+  
+  for (const tx of transactions.resources) {
+    await cosmosDb.getTransactionsContainer().item(tx.id, tx.householdId).delete();
+  }
+  
+  // Remove from households
+  for (const householdId of authContext.householdIds) {
+    const household = await cosmosDb.getHouseholdsContainer().item(householdId, householdId).read();
+    if (household.resource) {
+      const updatedMembers = household.resource.members.filter(m => m.userId !== authContext.userId);
+      
+      // If last member, delete household
+      if (updatedMembers.length === 0) {
+        await cosmosDb.getHouseholdsContainer().item(householdId, householdId).delete();
+      } else {
+        // If last admin, promote another member
+        const hasAdmin = updatedMembers.some(m => m.role === 'admin');
+        if (!hasAdmin && updatedMembers.length > 0) {
+          updatedMembers[0].role = 'admin';
+        }
+        
+        await cosmosDb.getHouseholdsContainer().item(householdId, householdId).replace({
+          ...household.resource,
+          members: updatedMembers,
+          updatedAt: new Date().toISOString(),
+        });
+      }
+    }
+  }
+  
+  // Delete user profile
+  await cosmosDb.getUsersContainer().item(`user-${authContext.userId}`, authContext.userId).delete();
+  
+  return { status: 200, jsonBody: { message: 'Account deleted successfully' } };
+}
+```
+
+
 
 ### 8.2 Role-Based Access Control (RBAC)
 
@@ -3247,7 +3696,7 @@ async function sendEmailAlert(severity: string, title: string, details: string):
   const emailClient = new EmailClient(process.env.ACS_CONNECTION_STRING!);
   
   const message = {
-    senderAddress: 'DoNotReply@kirana.app',
+    senderAddress: 'DoNotReply@vedprakash.net',
     content: {
       subject: `${severity}: ${title}`,
       plainText: details,
@@ -3349,7 +3798,7 @@ async function sendEmailAlert(severity: string, title: string, details: string):
 **Infrastructure**
 - [ ] All Azure resources provisioned in West US 2
 - [ ] Entra ID app registration completed
-- [ ] DNS configured (app.kirana.app → Azure Static Web Apps)
+- [ ] DNS configured (kirana.vedprakash.net → Azure Static Web Apps)
 - [ ] SSL certificate installed
 - [ ] Application Insights configured with custom dashboards
 - [ ] Cost alerts configured ($35/day, $50/day thresholds)

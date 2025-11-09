@@ -322,6 +322,85 @@ export interface User {
   _etag?: string;
 }
 
+/**
+ * User profile (users container - Phase 2)
+ * Partition key: /userId
+ */
+export interface UserProfile {
+  id: string;              // Same as userId (sub claim from JWT)
+  type: 'user_profile';    // Document type
+  userId: string;          // User ID for partition key
+  email: string;           // From JWT (email claim)
+  displayName: string;     // User's chosen name
+  profilePictureUrl?: string;  // Azure Blob Storage URL
+  timezone: string;        // IANA Time Zone (default: 'America/Los_Angeles')
+  currency: string;        // ISO 4217 code (default: 'USD')
+  preferences: {
+    emailNotifications: boolean;
+    pushNotifications: boolean;
+    weeklyDigest: boolean;
+  };
+  createdAt: string;       // ISO 8601 timestamp
+  lastLoginAt: string;     // ISO 8601 timestamp
+  updatedAt: string;       // ISO 8601 timestamp
+  
+  // Cosmos DB
+  _etag?: string;
+}
+
+/**
+ * Household invitation (invitations container - Phase 2.2)
+ * Partition key: /householdId
+ */
+export interface Invitation {
+  id: string;              // 32-character random invite code (also serves as document ID)
+  type: 'invitation';      // Document type
+  householdId: string;     // Household being invited to (partition key)
+  invitedBy: string;       // userId of the person who created the invitation
+  invitedEmail: string;    // Email address of the invitee
+  inviteCode: string;      // Same as id (32-char random code for URL)
+  status: 'pending' | 'accepted' | 'expired';  // Invitation status
+  createdAt: string;       // ISO 8601 timestamp
+  expiresAt: string;       // ISO 8601 timestamp (createdAt + 7 days)
+  acceptedAt?: string;     // ISO 8601 timestamp (when invitation was accepted)
+  acceptedBy?: string;     // userId of the person who accepted (should match invitedEmail)
+  
+  // Cosmos DB
+  _etag?: string;
+  ttl?: number;            // Time-to-live in seconds (7 days = 604800)
+}
+
+/**
+ * User session for device/security tracking (Phase 2.3)
+ * Partition key: /userId
+ * TTL: 7 days (604800 seconds) - auto-delete after expiry
+ */
+export interface Session {
+  id: string;              // Session ID (UUID v4)
+  type: 'session';         // Document type
+  userId: string;          // User who owns this session (partition key)
+  
+  // Device Information
+  deviceInfo: {
+    os: string;            // Operating system: Windows, macOS, iOS, Android, Linux, etc.
+    browser: string;       // Browser: Chrome, Safari, Firefox, Edge, etc.
+    userAgent: string;     // Full user-agent string for detailed analysis
+  };
+  
+  // Connection Information
+  ipAddress: string;       // Client IP address (IPv4 or IPv6)
+  location?: string;       // Optional: City, Country from IP geolocation (e.g., "San Francisco, US")
+  
+  // Timestamps
+  createdAt: string;       // ISO 8601 timestamp (session start)
+  lastActivityAt: string;  // ISO 8601 timestamp (last request with this session)
+  expiresAt: string;       // ISO 8601 timestamp (createdAt + 7 days)
+  
+  // Cosmos DB
+  _etag?: string;
+  ttl?: number;            // Time-to-live in seconds (7 days = 604800)
+}
+
 // ============================================================================
 // LLM & PARSING
 // ============================================================================

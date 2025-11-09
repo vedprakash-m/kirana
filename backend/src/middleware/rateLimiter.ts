@@ -34,12 +34,52 @@ export interface RateLimitConfig {
 
 /**
  * Predefined rate limit configurations
+ * 
+ * Authentication Endpoints (Strict Limits - Prevent Brute Force):
+ * - AUTH_LOGIN: 5 requests per 15 minutes per IP
+ * - AUTH_REFRESH: 10 requests per hour per user
+ * - AUTH_LOGOUT: 20 requests per hour per user
+ * 
+ * LLM-Dependent Endpoints (Cost Control):
+ * - CSV_UPLOAD: 5 requests/minute per user
+ * - PHOTO_OCR: 10 requests/minute per user
+ * - MICRO_REVIEW: 30 requests/minute per user
+ * - PARSE_POLLING: 120 requests/minute per user (2/second)
  */
 export const RATE_LIMITS = {
+  // Authentication (Strict - Prevent Brute Force)
+  AUTH_LOGIN: { 
+    maxRequests: 5, 
+    windowMs: 15 * 60 * 1000,  // 15 minutes
+    keyGenerator: (req: HttpRequest) => {
+      // Track by IP address for login attempts (no userId available before auth)
+      return req.headers.get('x-forwarded-for') || req.headers.get('x-real-ip') || 'unknown-ip';
+    }
+  },
+  AUTH_REFRESH: { 
+    maxRequests: 10, 
+    windowMs: 60 * 60 * 1000,  // 1 hour
+    keyGenerator: (req: HttpRequest) => {
+      // Track by IP for refresh (uses cookies, no userId in request)
+      return req.headers.get('x-forwarded-for') || req.headers.get('x-real-ip') || 'unknown-ip';
+    }
+  },
+  AUTH_LOGOUT: { 
+    maxRequests: 20, 
+    windowMs: 60 * 60 * 1000,  // 1 hour
+    keyGenerator: (req: HttpRequest) => {
+      // Track by IP for logout
+      return req.headers.get('x-forwarded-for') || req.headers.get('x-real-ip') || 'unknown-ip';
+    }
+  },
+  
+  // LLM-Dependent Endpoints (Cost Control)
   CSV_UPLOAD: { maxRequests: 5, windowMs: 60000 },      // 5/minute
   PHOTO_OCR: { maxRequests: 10, windowMs: 60000 },      // 10/minute
   MICRO_REVIEW: { maxRequests: 30, windowMs: 60000 },   // 30/minute
   PARSE_POLLING: { maxRequests: 120, windowMs: 60000 }, // 120/minute (2/second)
+  
+  // Default for non-sensitive endpoints
   DEFAULT: { maxRequests: 60, windowMs: 60000 }         // 60/minute default
 } as const;
 
