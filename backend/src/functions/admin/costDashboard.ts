@@ -15,6 +15,7 @@
  */
 
 import { app, HttpRequest, HttpResponseInit, InvocationContext } from '@azure/functions';
+import { validateJWT } from '../../middleware/auth';
 import { getCosmosDbService } from '../../services/cosmosDbService';
 import { CostTracking, ApiResponse, ErrorCode } from '../../types/shared';
 import { Container } from '@azure/cosmos';
@@ -81,13 +82,27 @@ async function getCostContainer(): Promise<Container> {
 /**
  * Check if user has admin role
  */
-function isAdmin(request: HttpRequest): boolean {
-  // In production, validate JWT claims for admin role
-  // For now, check header or query param (development only)
-  const adminKey = request.headers.get('x-admin-key');
-  const envAdminKey = process.env.ADMIN_KEY || 'dev-admin-key';
+/**
+ * Validate admin access using JWT roles
+ */
+async function validateAdminAccess(
+  request: HttpRequest,
+  context: InvocationContext
+): Promise<boolean> {
+  // Validate JWT token
+  const authContext = await validateJWT(request, context);
+  if (!authContext) {
+    return false;
+  }
   
-  return adminKey === envAdminKey;
+  // Check for admin role in JWT claims
+  const isAdmin = authContext.roles.includes('admin');
+  
+  if (!isAdmin) {
+    context.warn(`User ${authContext.userId} attempted admin access without admin role`);
+  }
+  
+  return isAdmin;
 }
 
 /**
@@ -134,7 +149,8 @@ async function getCostSummary(
   request: HttpRequest,
   context: InvocationContext
 ): Promise<HttpResponseInit> {
-  if (!isAdmin(request)) {
+  // Validate admin access
+  if (!await validateAdminAccess(request, context)) {
     return createErrorResponse(ErrorCode.FORBIDDEN, 'Admin access required', 403);
   }
 
@@ -209,7 +225,8 @@ async function getCostByDay(
   request: HttpRequest,
   context: InvocationContext
 ): Promise<HttpResponseInit> {
-  if (!isAdmin(request)) {
+  // Validate admin access
+  if (!await validateAdminAccess(request, context)) {
     return createErrorResponse(ErrorCode.FORBIDDEN, 'Admin access required', 403);
   }
 
@@ -271,7 +288,8 @@ async function getCostByUser(
   request: HttpRequest,
   context: InvocationContext
 ): Promise<HttpResponseInit> {
-  if (!isAdmin(request)) {
+  // Validate admin access
+  if (!await validateAdminAccess(request, context)) {
     return createErrorResponse(ErrorCode.FORBIDDEN, 'Admin access required', 403);
   }
 
@@ -338,7 +356,8 @@ async function getCostByOperation(
   request: HttpRequest,
   context: InvocationContext
 ): Promise<HttpResponseInit> {
-  if (!isAdmin(request)) {
+  // Validate admin access
+  if (!await validateAdminAccess(request, context)) {
     return createErrorResponse(ErrorCode.FORBIDDEN, 'Admin access required', 403);
   }
 

@@ -12,6 +12,7 @@
 import { app, HttpRequest, HttpResponseInit, InvocationContext } from '@azure/functions';
 import { getTransactionRepository } from '../repositories/transactionRepository';
 import { getItemRepository } from '../repositories/itemRepository';
+import { validateJWT, validateHouseholdAccess } from '../middleware/auth';
 import { 
   ApiResponse, 
   CreateTransactionDto,
@@ -24,13 +25,22 @@ import {
  * List transactions
  */
 async function listTransactions(request: HttpRequest, context: InvocationContext): Promise<HttpResponseInit> {
-  const householdId = request.query.get('householdId');
+  // Validate JWT token
+  const authContext = await validateJWT(request, context);
+  if (!authContext) {
+    return createErrorResponse(ErrorCode.AUTH_INVALID, 'Invalid or missing authentication token', 401);
+  }
+  
+  // Use user's household from auth context (do NOT trust query params)
+  const householdId = authContext.householdIds[0];
+  
+  // Validate household access
+  if (!await validateHouseholdAccess(authContext, householdId, context)) {
+    return createErrorResponse(ErrorCode.FORBIDDEN, 'Access denied to household', 403);
+  }
+  
   const itemId = request.query.get('itemId');
   const limit = request.query.get('limit');
-  
-  if (!householdId) {
-    return createErrorResponse(ErrorCode.VALIDATION_ERROR, 'householdId query parameter is required', 400);
-  }
   
   try {
     const repository = await getTransactionRepository();
@@ -55,12 +65,23 @@ async function listTransactions(request: HttpRequest, context: InvocationContext
  * Create transaction (record purchase)
  */
 async function createTransaction(request: HttpRequest, context: InvocationContext): Promise<HttpResponseInit> {
+  // Validate JWT token
+  const authContext = await validateJWT(request, context);
+  if (!authContext) {
+    return createErrorResponse(ErrorCode.AUTH_INVALID, 'Invalid or missing authentication token', 401);
+  }
+  
+  // Use user's household and ID from auth context (do NOT trust request body)
+  const householdId = authContext.householdIds[0];
+  const userId = authContext.userId;
+  
+  // Validate household access
+  if (!await validateHouseholdAccess(authContext, householdId, context)) {
+    return createErrorResponse(ErrorCode.FORBIDDEN, 'Access denied to household', 403);
+  }
+  
   try {
     const body = await request.json() as any;
-    
-    if (!body.householdId || !body.userId) {
-      return createErrorResponse(ErrorCode.VALIDATION_ERROR, 'householdId and userId are required', 400);
-    }
     
     const dto: CreateTransactionDto = {
       itemId: body.itemId,
@@ -87,7 +108,7 @@ async function createTransaction(request: HttpRequest, context: InvocationContex
     
     // Verify item exists
     const itemRepo = await getItemRepository();
-    const item = await itemRepo.getById(dto.itemId, body.householdId);
+    const item = await itemRepo.getById(dto.itemId, householdId);
     
     if (!item) {
       return createErrorResponse(ErrorCode.NOT_FOUND, `Item not found: ${dto.itemId}`, 404);
@@ -95,10 +116,10 @@ async function createTransaction(request: HttpRequest, context: InvocationContex
     
     // Create transaction
     const repository = await getTransactionRepository();
-    const transaction = await repository.create(body.householdId, body.userId, dto);
+    const transaction = await repository.create(householdId, userId, dto);
     
     // Update item's last purchase info
-    await itemRepo.update(dto.itemId, body.householdId, {
+    await itemRepo.update(dto.itemId, householdId, {
       lastPurchaseDate: dto.purchaseDate,
       lastPurchasePrice: dto.totalPrice
     });
@@ -123,12 +144,23 @@ async function createTransaction(request: HttpRequest, context: InvocationContex
  * Quickly record a repurchase using previous purchase data as defaults.
  */
 async function restock(request: HttpRequest, context: InvocationContext): Promise<HttpResponseInit> {
+  // Validate JWT token
+  const authContext = await validateJWT(request, context);
+  if (!authContext) {
+    return createErrorResponse(ErrorCode.AUTH_INVALID, 'Invalid or missing authentication token', 401);
+  }
+  
+  // Use user's household and ID from auth context (do NOT trust request body)
+  const householdId = authContext.householdIds[0];
+  const userId = authContext.userId;
+  
+  // Validate household access
+  if (!await validateHouseholdAccess(authContext, householdId, context)) {
+    return createErrorResponse(ErrorCode.FORBIDDEN, 'Access denied to household', 403);
+  }
+  
   try {
     const body = await request.json() as any;
-    
-    if (!body.householdId || !body.userId) {
-      return createErrorResponse(ErrorCode.VALIDATION_ERROR, 'householdId and userId are required', 400);
-    }
     
     const dto: OneTapRestockDto = {
       itemId: body.itemId,
@@ -142,7 +174,7 @@ async function restock(request: HttpRequest, context: InvocationContext): Promis
     
     // Get item details
     const itemRepo = await getItemRepository();
-    const item = await itemRepo.getById(dto.itemId, body.householdId);
+    const item = await itemRepo.getById(dto.itemId, householdId);
     
     if (!item) {
       return createErrorResponse(ErrorCode.NOT_FOUND, `Item not found: ${dto.itemId}`, 404);
@@ -150,7 +182,7 @@ async function restock(request: HttpRequest, context: InvocationContext): Promis
     
     // Get last transaction for defaults
     const transactionRepo = await getTransactionRepository();
-    const lastTransaction = await transactionRepo.getLastPurchase(dto.itemId, body.householdId);
+    const lastTransaction = await transactionRepo.getLastPurchase(dto.itemId, householdId);
     
     // Use provided values or defaults from last purchase
     const quantity = dto.quantity || lastTransaction?.quantity || 1;
@@ -170,10 +202,10 @@ async function restock(request: HttpRequest, context: InvocationContext): Promis
       }
     };
     
-    const transaction = await transactionRepo.create(body.householdId, body.userId, transactionDto);
+    const transaction = await transactionRepo.create(householdId, userId, transactionDto);
     
     // Update item
-    await itemRepo.update(dto.itemId, body.householdId, {
+    await itemRepo.update(dto.itemId, householdId, {
       lastPurchaseDate: transaction.purchaseDate,
       lastPurchasePrice: transaction.totalPrice,
       quantity: item.quantity + quantity
@@ -233,21 +265,21 @@ function createErrorResponse(code: ErrorCode, message: string, status: number): 
 // Register routes
 app.http('transactions-list', {
   methods: ['GET'],
-  authLevel: 'anonymous',
+  authLevel: 'function',
   route: 'transactions',
   handler: listTransactions
 });
 
 app.http('transactions-create', {
   methods: ['POST'],
-  authLevel: 'anonymous',
+  authLevel: 'function',
   route: 'transactions',
   handler: createTransaction
 });
 
 app.http('transactions-restock', {
   methods: ['POST'],
-  authLevel: 'anonymous',
+  authLevel: 'function',
   route: 'transactions/restock',
   handler: restock
 });

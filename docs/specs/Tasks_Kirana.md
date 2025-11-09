@@ -10,17 +10,19 @@
 ## � Implementation Progress Tracker
 
 | Phase | Status | Start Date | End Date | Completion | Blockers |
-|-------|--------|------------|----------|----------|------------|----------|
+|-------|--------|------------|----------|----------|------------|
 | Phase 0: Infrastructure | ✅ Complete | Nov 2, 2025 | Nov 2, 2025 | 13/13 tasks | - |
 | Phase 1A: Backend Core | ✅ Complete | Nov 2, 2025 | Nov 3, 2025 | 12/12 tasks (100%) | - |
 | Phase 1B: Frontend | ✅ Complete | Nov 2, 2025 | Nov 2, 2025 | 6/6 task groups (100%) | - |
 | Phase 1C: LLM & Parsing | ✅ Complete | Nov 2, 2025 | Nov 2, 2025 | 9/9 tasks (100%) | - |
 | Phase 1D: Predictions | ✅ Complete | Nov 2, 2025 | Nov 2, 2025 | 6/6 tasks (100%) | - |
 | Phase 1E: Onboarding | ✅ Complete | Nov 2, 2025 | Nov 2, 2025 | 5/5 tasks (100%) | - |
-| Phase 1F: Polish | 🟡 In Progress | Nov 3, 2025 | - | 5/11 tasks (45%) | - |
-| Phase 1G: Beta Testing | 🔲 Not Started | - | - | 0/9 tasks | 1F |
+| Phase 1F: Polish & Security | � **BLOCKED** | Nov 3, 2025 | - | 5/17 tasks (29%) | **CRITICAL: Auth missing** |
+| Phase 1G: Beta Testing | � **BLOCKED** | - | - | 0/9 tasks | 1F security |
 
 **Legend:** 🔲 Not Started | 🟡 In Progress | ✅ Complete | 🔴 Blocked
+
+**⚠️ CRITICAL BLOCKER:** Phase 1F now includes 6 CRITICAL security tasks (1F.4.1-1F.4.6) that MUST be completed before beta testing. Current implementation has no authentication enforcement - ALL endpoints are accessible anonymously.
 
 **Update Instructions:** At the end of each day, update this table with:
 1. Current status (🔲 → 🟡 → ✅)
@@ -30,7 +32,53 @@
 
 ---
 
-## 📝 Latest Implementation Notes (Nov 2, 2025)
+## 📝 Latest Implementation Notes (Nov 8, 2025)
+
+**🚨 CRITICAL SECURITY REVIEW COMPLETED:**
+
+A comprehensive security audit revealed **CRITICAL authentication vulnerabilities** that must be addressed before ANY user data can be handled:
+
+### Security Findings:
+
+1. **NO Authentication Enforcement** 🔴 CRITICAL
+   - All backend endpoints set to `authLevel: 'anonymous'`
+   - No JWT validation middleware implemented
+   - Any user can call any API endpoint
+   - **Impact:** Complete unauthorized data access
+
+2. **Broken Access Control** 🔴 CRITICAL  
+   - Backend trusts `householdId` from query parameters (client-controlled)
+   - No validation that user belongs to requested household
+   - **Attack:** User can access ANY household's data by changing query param
+
+3. **Insecure Direct Object References** 🔴 HIGH
+   - No authorization checks on item/transaction access
+   - User can enumerate and access resources by ID
+   - **Attack:** Guess item IDs to access other users' data
+
+4. **Frontend Token Storage Vulnerability** 🟡 MEDIUM
+   - Refresh tokens stored in localStorage (XSS risk)
+   - Should use HttpOnly secure cookies
+   - **Attack:** XSS attack steals permanent access
+
+### Action Items Added (Phase 1F.4):
+
+**6 New Security Tasks (MUST complete before beta):**
+- 🔲 Task 1F.4.1: JWT Validation Middleware (~250 lines)
+- 🔲 Task 1F.4.2: Household Authorization Middleware (+100 lines)
+- 🔲 Task 1F.4.3: Update All Endpoints with Auth (8 files)
+- 🔲 Task 1F.4.4: Audit Logging Service (~200 lines)
+- 🔲 Task 1F.4.5: Fix Frontend Token Storage (2 files)
+- 🔲 Task 1F.4.6: Rate Limit Auth Endpoints
+
+**Estimated Effort:** 2-3 weeks focused security work
+
+**Timeline Impact:**
+- Phase 1F extended from 1 week → 3 weeks
+- Beta testing start date pushed back
+- Production launch BLOCKED until security complete
+
+---
 
 ### Phase 0: Infrastructure Setup - ✅ COMPLETE (13/13 tasks)
 All scaffolding, configuration, and project structure complete. Azure setup scripts ready (not yet run).
@@ -2166,9 +2214,223 @@ Is budget risk materializing (>$40/day spend)?
   - ✅ Each runbook tested during fire drills (ready for testing)
   - ✅ Includes escalation contacts (table with on-call rotation and contact info)
 
-### 1F.4 Accessibility (WCAG 2.1 Level AA)
+### 1F.4 Authentication & Authorization Implementation (CRITICAL SECURITY)
 
-- [x] **Task 1F.4.1: Accessibility Audit and Fixes** ✅ COMPLETE
+- [ ] **Task 1F.4.1: Implement JWT Validation Middleware**
+- **File:** `backend/src/middleware/auth.ts` (new file, ~250 lines)
+- **Purpose:** Validate JWT tokens on ALL backend endpoints (fixes CRITICAL security vulnerability)
+- **Implementation:**
+  - Install packages: `jsonwebtoken`, `jwks-rsa`, `@types/jsonwebtoken`
+  - Create `validateJWT()` middleware function
+  - Fetch JWKS from Microsoft Entra ID (`https://login.microsoftonline.com/{tenant}/discovery/v2.0/keys`)
+  - Verify JWT signature using RSA public key
+  - Validate claims: audience (client ID), issuer (tenant ID), expiry (exp claim)
+  - Extract user info from JWT: `userId` (sub/oid claim), `email`, `roles`
+  - Query Cosmos DB `households` container to get user's household IDs
+  - Attach `AuthContext` to request object: `{ userId, email, householdIds, roles }`
+  - Return 401 Unauthorized if token invalid/expired/missing
+  - Log failed authentication attempts to audit log
+- **AuthContext Interface:**
+  ```typescript
+  interface AuthContext {
+    userId: string;
+    email: string;
+    householdIds: string[];
+    roles: string[];
+  }
+  ```
+- **Error Handling:**
+  - Token missing → 401 "Authorization header required"
+  - Token expired → 401 "Token expired"
+  - Invalid signature → 401 "Invalid token signature"
+  - Missing claims → 401 "Invalid token claims"
+- **Acceptance Criteria:**
+  - ✅ All endpoints validate JWT before processing
+  - ✅ Invalid tokens return 401 Unauthorized
+  - ✅ AuthContext attached to request object
+  - ✅ User's households fetched from database
+  - ✅ Failed auth attempts logged
+  - [AC-SECURITY], [AC-TEST]
+
+- [ ] **Task 1F.4.2: Implement Household Authorization Middleware**
+- **File:** `backend/src/middleware/auth.ts` (extend existing file, +100 lines)
+- **Purpose:** Validate user belongs to requested household (prevents cross-household data access)
+- **Implementation:**
+  - Create `validateHouseholdAccess()` middleware function
+  - Extract `householdId` from request (path param, NOT query param)
+  - Check if `householdId` exists in `authContext.householdIds[]`
+  - Return 403 Forbidden if user not a household member
+  - Log unauthorized access attempts to audit log
+  - Include details: userId, requested householdId, user's householdIds, endpoint
+- **Integration Points:**
+  - All `/api/items` endpoints
+  - All `/api/transactions` endpoints
+  - All `/api/households/:id` endpoints
+  - Parsing endpoints (CSV/photo)
+  - Prediction endpoints
+- **Acceptance Criteria:**
+  - ✅ User can only access their household's data
+  - ✅ Cross-household requests return 403 Forbidden
+  - ✅ Unauthorized attempts logged with details
+  - ✅ HouseholdId NEVER accepted from query params
+  - [AC-SECURITY], [AC-TEST]
+
+- [ ] **Task 1F.4.3: Update All API Endpoints with Authentication**
+- **Files:** All function files in `backend/src/functions/` (8 files to update)
+- **Purpose:** Apply authentication middleware to ALL endpoints
+- **Changes Required:**
+  1. **items.ts** (8 endpoints):
+     - Add `validateJWT` middleware to ALL handlers
+     - Add `validateHouseholdAccess` to GET/PUT/DELETE by ID
+     - Remove `householdId` from query params
+     - Derive householdId from `authContext.householdIds[0]`
+     - Change `authLevel` from `'anonymous'` to `'function'`
+  2. **transactions.ts** (3 endpoints):
+     - Add `validateJWT` middleware
+     - Add `validateHouseholdAccess`
+     - Remove query param householdId
+     - Change authLevel to `'function'`
+  3. **predictions/overridePrediction.ts**:
+     - Add both middleware functions
+     - Verify user owns the item being overridden
+     - Change authLevel to `'function'`
+  4. **items/createTeachModeItem.ts**:
+     - Add `validateJWT` middleware
+     - Set householdId from authContext
+     - Change authLevel to `'function'`
+  5. **parsing/parseCSV.ts, parsing/submitReview.ts**:
+     - Add both middleware functions
+     - Associate parse job with authenticated user
+     - Change authLevel to `'function'`
+  6. **jobs/recalculatePredictions.ts**:
+     - Keep as timer trigger (no auth needed)
+     - Add service principal validation
+  7. **admin/costDashboard.ts**:
+     - Add `validateJWT` middleware
+     - Add admin role check
+     - Change authLevel to `'function'`
+- **Example Integration:**
+  ```typescript
+  app.http('getItems', {
+    methods: ['GET'],
+    authLevel: 'function', // ← Changed from 'anonymous'
+    route: 'items',
+    handler: async (request: HttpRequest, context: InvocationContext) => {
+      // Validate JWT first
+      const authContext = await validateJWT(request, context);
+      if (!authContext) {
+        return { status: 401, jsonBody: { error: 'Unauthorized' } };
+      }
+      
+      // Use user's household (do NOT trust query params)
+      const householdId = authContext.householdIds[0];
+      
+      // Validate household access
+      if (!await validateHouseholdAccess(authContext, householdId, context)) {
+        return { status: 403, jsonBody: { error: 'Forbidden' } };
+      }
+      
+      // Proceed with business logic...
+    }
+  });
+  ```
+- **Acceptance Criteria:**
+  - ✅ ALL endpoints have `authLevel: 'function'`
+  - ✅ NO endpoints accept householdId from query params
+  - ✅ All endpoints validate JWT token
+  - ✅ All household-scoped endpoints validate membership
+  - ✅ API returns 401 without valid token
+  - ✅ API returns 403 for cross-household access
+  - [AC-SECURITY], [AC-TEST]
+
+- [ ] **Task 1F.4.4: Implement Audit Logging Service**
+- **File:** `backend/src/services/auditLogger.ts` (new file, ~200 lines)
+- **Purpose:** Log all sensitive operations for GDPR compliance
+- **Implementation:**
+  - Create `AuditLogEntry` interface
+  - Implement `logAuditEvent()` function
+  - Write to Cosmos DB `events` container with type `'audit_log'`
+  - Include: timestamp, event, userId, householdId, resourceId, action, authorized, ipAddress, userAgent
+  - Set TTL to 90 days (GDPR retention requirement)
+  - Non-blocking (errors don't break user flow)
+- **Events to Log:**
+  - `AUTH_FAILED`: Failed authentication attempt
+  - `ACCESS_DENIED`: 403 Forbidden responses
+  - `ITEM_ACCESS`: Read operations on items
+  - `ITEM_MODIFIED`: Create/update/delete operations
+  - `TRANSACTION_CREATED`: New transaction
+  - `HOUSEHOLD_ACCESSED`: Cross-household access attempt
+  - `DATA_EXPORTED`: CSV exports, API data dumps
+  - `ADMIN_ACTION`: Admin dashboard access
+- **Integration Points:**
+  - Call from `validateJWT()` on auth failure
+  - Call from `validateHouseholdAccess()` on 403
+  - Call from all CRUD endpoints
+  - Call from admin endpoints
+- **Acceptance Criteria:**
+  - ✅ All failed auth attempts logged
+  - ✅ All 403 Forbidden responses logged
+  - ✅ All data access logged (GDPR requirement)
+  - ✅ Logs include user, resource, action, outcome
+  - ✅ 90-day retention enforced
+  - ✅ Non-blocking (doesn't break on error)
+  - [AC-SECURITY], [AC-DOCS]
+
+- [ ] **Task 1F.4.5: Update Frontend Token Storage**
+- **Files:** 
+  - `frontend/src/store/authStore.ts` (update existing)
+  - `frontend/src/services/authService.ts` (update existing)
+- **Purpose:** Remove refresh tokens from localStorage (XSS vulnerability)
+- **Changes:**
+  - **Access Tokens:** Store in `sessionStorage` instead of `localStorage`
+  - **Refresh Tokens:** REMOVE from frontend entirely
+  - **Refresh Flow:** Call backend `/api/auth/refresh` endpoint (uses HttpOnly cookie)
+  - Update Zustand persist config to use sessionStorage
+  - Update MSAL config to use sessionStorage for cache
+- **Backend Refresh Endpoint:**
+  - Create `/api/auth/refresh` endpoint
+  - Accept refresh token from HttpOnly secure cookie
+  - Validate refresh token with Entra ID
+  - Return new access token
+  - Set new refresh token in cookie
+- **Cookie Configuration:**
+  - `httpOnly: true` (prevents JavaScript access)
+  - `secure: true` (HTTPS only)
+  - `sameSite: 'strict'` (CSRF protection)
+  - `maxAge: 7 days` (refresh token expiry)
+- **Acceptance Criteria:**
+  - ✅ Access tokens in sessionStorage (not localStorage)
+  - ✅ Refresh tokens NEVER in browser storage
+  - ✅ Refresh tokens in HttpOnly cookies only
+  - ✅ Token refresh via backend endpoint
+  - ✅ Secure cookie flags set correctly
+  - [AC-SECURITY]
+
+- [ ] **Task 1F.4.6: Add Rate Limiting to Auth Endpoints**
+- **File:** `backend/src/middleware/rateLimiter.ts` (extend existing)
+- **Purpose:** Prevent brute force attacks on authentication
+- **Implementation:**
+  - Apply strict rate limits to auth endpoints
+  - `/api/auth/login`: 5 attempts per 15 minutes per IP
+  - `/api/auth/refresh`: 10 attempts per hour per user
+  - `/api/auth/logout`: 20 attempts per hour per user
+  - Use existing rate limiter middleware
+  - Track by IP address AND userId
+  - Return 429 with Retry-After header
+- **Integration:**
+  - Add to auth function registrations
+  - Configure limits in middleware
+  - Log rate limit violations
+- **Acceptance Criteria:**
+  - ✅ Auth endpoints have strict rate limits
+  - ✅ Brute force attacks blocked
+  - ✅ Violations logged
+  - ✅ 429 responses include Retry-After
+  - [AC-SECURITY]
+
+### 1F.5 Accessibility (WCAG 2.1 Level AA)
+
+- [x] **Task 1F.5.1: Accessibility Audit and Fixes** ✅ COMPLETE
 - **Files:**
   - `docs/accessibility/accessibility-audit.md` (605 lines)
   - `frontend/src/utils/accessibility.ts` (330 lines)

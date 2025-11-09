@@ -26,6 +26,7 @@
 
 import { app, HttpRequest, HttpResponseInit, InvocationContext } from '@azure/functions';
 import { v4 as uuidv4 } from 'uuid';
+import { validateJWT, validateHouseholdAccess } from '../../middleware/auth';
 import { getItemRepository } from '../../repositories/itemRepository';
 import { getTransactionRepository } from '../../repositories/transactionRepository';
 import { getNormalizationCache } from '../../services/normalizationCache';
@@ -472,17 +473,50 @@ async function submitReview(
   context: InvocationContext
 ): Promise<HttpResponseInit> {
   try {
+    // Validate JWT token
+    const authContext = await validateJWT(request, context);
+    if (!authContext) {
+      return {
+        status: 401,
+        jsonBody: {
+          success: false,
+          error: {
+            code: ErrorCode.AUTH_INVALID,
+            message: 'Invalid or missing authentication token'
+          }
+        } as ApiResponse<never>
+      };
+    }
+    
     const body = await request.json() as SubmitReviewRequest;
     
+    // Use user's household and ID from auth context (do NOT trust request body)
+    const householdId = authContext.householdIds[0];
+    const userId = authContext.userId;
+    
+    // Validate household access
+    if (!await validateHouseholdAccess(authContext, householdId, context)) {
+      return {
+        status: 403,
+        jsonBody: {
+          success: false,
+          error: {
+            code: ErrorCode.FORBIDDEN,
+            message: 'Access denied to household'
+          }
+        } as ApiResponse<never>
+      };
+    }
+    
     // Validate input
-    if (!body.householdId || !body.userId || !body.action || !body.parsedItem) {
+    if (!body.action || !body.parsedItem) {
       return {
         status: 400,
         jsonBody: {
           success: false,
           error: {
             code: ErrorCode.VALIDATION_ERROR,
-            message: 'householdId, userId, action, and parsedItem are required'
+            message: 'action and parsedItem are required'
           }
         } as ApiResponse<never>
       };
@@ -514,27 +548,34 @@ async function submitReview(
       };
     }
     
+    // Enrich body with auth context values (override any client-provided values)
+    const enrichedBody: SubmitReviewRequest = {
+      ...body,
+      householdId,
+      userId
+    };
+    
     // Handle action
     let result: SubmitReviewResponse;
     
-    switch (body.action) {
+    switch (enrichedBody.action) {
       case 'accept':
-        result = await handleAccept(body);
+        result = await handleAccept(enrichedBody);
         break;
       case 'edit':
-        result = await handleEdit(body);
+        result = await handleEdit(enrichedBody);
         break;
       case 'reject':
         result = await handleReject();
         break;
       default:
-        throw new Error(`Unknown action: ${body.action}`);
+        throw new Error(`Unknown action: ${enrichedBody.action}`);
     }
     
     // Log analytics
-    await logAnalytics(body, result);
+    await logAnalytics(enrichedBody, result);
     
-    context.log(`✅ Review submitted: ${body.action} (merged: ${result.merged})`);
+    context.log(`✅ Review submitted: ${enrichedBody.action} (merged: ${result.merged})`);
     
     return {
       status: 200,
@@ -562,7 +603,7 @@ async function submitReview(
 // Register Azure Function
 app.http('parsing-submit-review', {
   methods: ['POST'],
-  authLevel: 'anonymous',
-  route: 'parsing/submitReview',
+  authLevel: 'function',
+  route: 'parsing/submit-review',
   handler: submitReview
 });

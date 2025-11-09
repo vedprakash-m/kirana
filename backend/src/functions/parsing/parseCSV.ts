@@ -20,6 +20,7 @@
 
 import { app, HttpRequest, HttpResponseInit, InvocationContext } from '@azure/functions';
 import { v4 as uuidv4 } from 'uuid';
+import { validateJWT, validateHouseholdAccess } from '../../middleware/auth';
 import { getGeminiClient } from '../../services/geminiClient';
 import { getNormalizationCache, NormalizedItem } from '../../services/normalizationCache';
 import { getFeatureFlags, isLLMEnabledForUser } from '../../config/featureFlags';
@@ -522,6 +523,21 @@ async function parseCSV(
   context: InvocationContext
 ): Promise<HttpResponseInit> {
   try {
+    // Validate JWT token FIRST (before rate limiting)
+    const authContext = await validateJWT(request, context);
+    if (!authContext) {
+      return {
+        status: 401,
+        jsonBody: {
+          success: false,
+          error: {
+            code: ErrorCode.AUTH_INVALID,
+            message: 'Invalid or missing authentication token'
+          }
+        } as ApiResponse<never>
+      };
+    }
+    
     // Apply rate limiting (5 requests/minute per user)
     const rateLimitResult = rateLimitMiddleware(request, RATE_LIMITS.CSV_UPLOAD);
     if (rateLimitResult) {
@@ -530,15 +546,33 @@ async function parseCSV(
     
     const body = await request.json() as any;
     
+    // Use user's household and ID from auth context (do NOT trust request body)
+    const householdId = authContext.householdIds[0];
+    const userId = authContext.userId;
+    
+    // Validate household access
+    if (!await validateHouseholdAccess(authContext, householdId, context)) {
+      return {
+        status: 403,
+        jsonBody: {
+          success: false,
+          error: {
+            code: ErrorCode.FORBIDDEN,
+            message: 'Access denied to household'
+          }
+        } as ApiResponse<never>
+      };
+    }
+    
     // Validate input
-    if (!body.csvText || !body.source || !body.householdId || !body.userId) {
+    if (!body.csvText || !body.source) {
       return {
         status: 400,
         jsonBody: {
           success: false,
           error: {
             code: ErrorCode.VALIDATION_ERROR,
-            message: 'csvText, source, householdId, and userId are required'
+            message: 'csvText and source are required'
           }
         } as ApiResponse<never>
       };
@@ -567,8 +601,8 @@ async function parseCSV(
     const results = await parseCSVFile(
       body.csvText,
       body.source,
-      body.householdId,
-      body.userId
+      householdId,
+      userId
     );
     
     // Calculate statistics
@@ -579,8 +613,8 @@ async function parseCSV(
     // Create ParseJob document
     const parseJob: ParseJob = {
       id: jobId,
-      householdId: body.householdId,
-      userId: body.userId,
+      householdId: householdId,
+      userId: userId,
       status: needsReviewCount > 0 ? ParseJobStatus.NEEDS_REVIEW : ParseJobStatus.COMPLETED,
       source: body.source,
       rawData: body.csvText,
@@ -634,7 +668,7 @@ async function parseCSV(
 // Register Azure Function
 app.http('parsing-csv', {
   methods: ['POST'],
-  authLevel: 'anonymous',
+  authLevel: 'function',
   route: 'parsing/csv',
   handler: parseCSV
 });

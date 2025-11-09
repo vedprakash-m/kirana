@@ -1,4 +1,5 @@
 import { app, HttpRequest, HttpResponseInit, InvocationContext } from '@azure/functions';
+import { validateJWT, validateHouseholdAccess } from '../../middleware/auth';
 import { getItemRepository } from '../../repositories/itemRepository';
 import { ApiError, ErrorCode } from '../../types/shared';
 
@@ -227,11 +228,38 @@ async function overridePrediction(
   context.log('POST /api/predictions/override - Override prediction');
 
   try {
+    // Validate JWT token
+    const authContext = await validateJWT(request, context);
+    if (!authContext) {
+      return {
+        status: 401,
+        jsonBody: {
+          code: ErrorCode.AUTH_INVALID,
+          message: 'Invalid or missing authentication token'
+        }
+      };
+    }
+    
     // Parse request body
     const body = await request.json() as any;
     
-    // Validate request
-    const validation = validateRequest(body);
+    // Use user's household and ID from auth context (do NOT trust request body)
+    const householdId = authContext.householdIds[0];
+    const userId = authContext.userId;
+    
+    // Validate household access
+    if (!await validateHouseholdAccess(authContext, householdId, context)) {
+      return {
+        status: 403,
+        jsonBody: {
+          code: ErrorCode.FORBIDDEN,
+          message: 'Access denied to household'
+        }
+      };
+    }
+    
+    // Validate request (but ignore householdId and userId from body)
+    const validation = validateRequest({ ...body, householdId, userId });
     if (!validation.valid) {
       return {
         status: 400,
@@ -239,11 +267,11 @@ async function overridePrediction(
       };
     }
 
-    const requestData = body as OverrideRequest;
+    const requestData: OverrideRequest = { ...body, householdId, userId };
 
     // Fetch existing item
     const itemRepo = await getItemRepository();
-    const item = await itemRepo.getById(requestData.itemId, requestData.householdId);
+    const item = await itemRepo.getById(requestData.itemId, householdId);
 
     if (!item) {
       return {
@@ -265,7 +293,7 @@ async function overridePrediction(
     const now = new Date().toISOString();
     await itemRepo.updatePrediction(
       requestData.itemId,
-      requestData.householdId,
+      householdId,
       {
         predictedRunOutDate: requestData.newPredictedDate,
         predictionConfidence: item.predictionConfidence, // Keep existing confidence
@@ -279,8 +307,8 @@ async function overridePrediction(
     // Track analytics event (in production, this would go to Application Insights or events container)
     context.log('Analytics event: prediction_override', {
       itemId: item.id,
-      householdId: requestData.householdId,
-      userId: requestData.userId,
+      householdId: householdId,
+      userId: userId,
       canonicalName: item.canonicalName,
       category: item.category,
       oldPredictedDate,
@@ -339,6 +367,6 @@ async function overridePrediction(
 app.http('overridePrediction', {
   methods: ['POST'],
   route: 'predictions/override',
-  authLevel: 'anonymous', // TODO: Change to 'function' in production with proper auth
+  authLevel: 'function',
   handler: overridePrediction
 });

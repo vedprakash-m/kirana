@@ -651,6 +651,22 @@ X-Request-Id: uuid-v4 (for tracing)
 
 **Authentication:** All endpoints require `Authorization: Bearer <token>` header
 
+**Security Requirements:**
+- ALL endpoints MUST use `authLevel: 'function'` in production (NEVER `'anonymous'`)
+- JWT validation MUST be first middleware in chain
+- `householdId` MUST be derived from authenticated user context (NEVER from query params)
+- Household authorization MUST validate user membership before data access
+- Failed authentication/authorization attempts MUST be logged to audit trail
+- Rate limiting MUST be applied to all endpoints (especially auth endpoints)
+
+**⚠️ CRITICAL:** The following security vulnerabilities have been identified and MUST be addressed:
+1. No JWT validation middleware implemented
+2. Endpoints trust client-provided householdId (IDOR vulnerability)
+3. No household membership validation
+4. All endpoints set to `authLevel: 'anonymous'`
+
+See Section 8 (Authentication & Authorization) for implementation details.
+
 | Endpoint | Method | Purpose | Key Request Fields | Response |
 |----------|--------|---------|-------------------|----------|
 | **Items API** |
@@ -2185,41 +2201,159 @@ export class LLMRouter {
 
 ### 8.1 Microsoft Entra ID Integration
 
-**Libraries:** `@azure/msal-node` (backend), `@azure/msal-browser` (frontend)
+**Libraries:** `@azure/msal-node` (backend), `@azure/msal-browser` (frontend), `jwks-rsa` (JWT validation)
 
 **Configuration:**
 - **Authority:** `https://login.microsoftonline.com/{TENANT_ID}`
 - **Scopes:** `api://kirana-api/.default`
-- **Token Cache:** localStorage (frontend), in-memory (backend)
+- **Token Storage (Frontend):** 
+  - Access tokens: sessionStorage (XSS protection)
+  - Refresh tokens: HttpOnly secure cookies (backend-managed, NEVER in localStorage)
+- **Token Storage (Backend):** In-memory cache only
 
 **Authentication Flow:**
 
 1. **Frontend (`useAuth` hook):**
-   - `login()`: Triggers Entra ID popup, requests access token
-   - `getAccessToken()`: Acquires token silently, auto-refreshes if expired
-   - `logout()`: Clears session and redirects to Entra logout
+   - `login()`: Redirects to Entra ID OAuth flow
+   - `getAccessToken()`: Retrieves from sessionStorage, auto-refreshes via backend if expired
+   - `logout()`: Clears sessionStorage, invalidates backend refresh token cookie
 
-2. **Backend (`validateToken` middleware):**
-   - Validates JWT signature using Entra ID public keys
-   - Extracts `userId`, `email`, `roles` from token claims
-   - Looks up or creates household in Cosmos DB `households` container
-   - Returns auth context for API requests
+2. **Backend (`validateJWT` middleware):**
+   - **REQUIRED on ALL protected endpoints** (no `authLevel: 'anonymous'` in production)
+   - Validates JWT signature using Entra ID JWKS (public keys)
+   - Verifies token expiry, audience, issuer claims
+   - Extracts `userId` (sub claim), `email`, `roles` from token
+   - Looks up user's households from Cosmos DB `households` container
+   - Attaches `AuthContext` to request: `{ userId, email, householdIds[], roles }`
+   - Returns 401 if token invalid/expired/missing
 
-3. **Household Assignment:**
-   - First-time users: Auto-create household with `admin` role
-   - Existing users: Query `households` container by `userId` in `members` array
-   - Household ID cached in auth context for partition key routing
+3. **Household Authorization (`validateHouseholdAccess` middleware):**
+   - **REQUIRED on ALL household-scoped endpoints**
+   - Extracts `householdId` from request (path param or derived from user context)
+   - Validates authenticated user belongs to requested household
+   - Returns 403 Forbidden if user not a household member
+   - **NEVER trust householdId from query params** (security vulnerability)
 
-**Error Handling:**
-- Missing/invalid token → 401 Unauthorized
-- Expired token → Frontend auto-refreshes silently
-- Token refresh fails → Redirect to login
+4. **Household Assignment (First-Time User):**
+   - Auto-create household in `households` container with `admin` role
+   - Store householdId in user profile
+   - Return householdId to frontend for subsequent requests
+
+**Implementation:**
+
+```typescript
+// middleware/auth.ts
+import jwt from 'jsonwebtoken';
+import jwksClient from 'jwks-rsa';
+import { HttpRequest, InvocationContext } from '@azure/functions';
+
+export interface AuthContext {
+  userId: string;
+  email: string;
+  householdIds: string[];
+  roles: string[];
+}
+
+const client = jwksClient({
+  jwksUri: `https://login.microsoftonline.com/${process.env.AZURE_AD_TENANT_ID}/discovery/v2.0/keys`,
+  cache: true,
+  cacheMaxAge: 86400000, // 24 hours
+});
+
+function getKey(header: any, callback: any) {
+  client.getSigningKey(header.kid, (err, key) => {
+    if (err) return callback(err);
+    const signingKey = key?.getPublicKey();
+    callback(null, signingKey);
+  });
+}
+
+export async function validateJWT(req: HttpRequest, context: InvocationContext): Promise<AuthContext | null> {
+  const authHeader = req.headers.get('authorization');
+  
+  if (!authHeader?.startsWith('Bearer ')) {
+    context.warn('Missing or malformed Authorization header');
+    return null;
+  }
+
+  const token = authHeader.substring(7);
+
+  try {
+    const decoded = await new Promise<any>((resolve, reject) => {
+      jwt.verify(
+        token,
+        getKey,
+        {
+          audience: process.env.AZURE_AD_CLIENT_ID,
+          issuer: `https://login.microsoftonline.com/${process.env.AZURE_AD_TENANT_ID}/v2.0`,
+          algorithms: ['RS256'],
+        },
+        (err, decoded) => {
+          if (err) reject(err);
+          else resolve(decoded);
+        }
+      );
+    });
+
+    // Extract user info from JWT claims
+    const userId = decoded.sub || decoded.oid; // User ID
+    const email = decoded.email || decoded.preferred_username;
+    
+    // Look up user's households from database
+    const householdIds = await getUserHouseholds(userId);
+
+    return {
+      userId,
+      email,
+      householdIds,
+      roles: decoded.roles || ['member'], // Default to member if no roles claim
+    };
+  } catch (error) {
+    context.error('JWT validation failed:', error);
+    return null;
+  }
+}
+
+async function getUserHouseholds(userId: string): Promise<string[]> {
+  const cosmosDb = await getCosmosDbService();
+  const container = cosmosDb.getHouseholdsContainer();
+  
+  // Query households where user is a member
+  const { resources } = await container.items
+    .query({
+      query: 'SELECT c.id FROM c WHERE ARRAY_CONTAINS(c.members, {"userId": @userId}, true)',
+      parameters: [{ name: '@userId', value: userId }],
+    })
+    .fetchAll();
+  
+  return resources.map(h => h.id);
+}
+
+export async function validateHouseholdAccess(
+  authContext: AuthContext,
+  householdId: string,
+  context: InvocationContext
+): Promise<boolean> {
+  if (!authContext.householdIds.includes(householdId)) {
+    context.warn(`User ${authContext.userId} attempted to access household ${householdId} without permission`);
+    return false;
+  }
+  return true;
+}
+```
+
+**Security Requirements:**
+- All Azure Functions must have `authLevel: 'function'` in production (NEVER `'anonymous'`)
+- JWT validation middleware MUST be first in middleware chain
+- Household authorization MUST validate user membership before data access
+- Audit log ALL failed authentication/authorization attempts
+- Rate limit authentication endpoints (5 attempts per 15 minutes)
 
 ### 8.2 Role-Based Access Control (RBAC)
 
 **Roles Definition**
 ```typescript
-// functions/shared/rbac.ts
+// shared/rbac.ts
 export enum Role {
   ADMIN = 'admin',
   MEMBER = 'member',
@@ -2267,30 +2401,63 @@ export const RolePermissions: Record<Role, string[]> = {
 export function hasPermission(role: Role, permission: string): boolean {
   return RolePermissions[role].includes(permission);
 }
-
-export function requirePermission(permission: string) {
-  return (req: HttpRequest, context: InvocationContext, next: () => Promise<HttpResponseInit>) => {
-    const { roles } = req.user; // Attached by validateToken middleware
-    
-    const hasAccess = roles.some((role: Role) => hasPermission(role, permission));
-    
-    if (!hasAccess) {
-      return {
-        status: 403,
-        jsonBody: {
-          success: false,
-          error: {
-            code: 'FORBIDDEN',
-            message: `Insufficient permissions. Required: ${permission}`,
-          },
-        },
-      };
-    }
-    
-    return next();
-  };
-}
 ```
+
+### 8.3 Audit Logging
+
+**All sensitive operations MUST be logged for compliance (GDPR Article 30):**
+
+```typescript
+// services/auditLogger.ts
+export interface AuditLogEntry {
+  timestamp: string;
+  event: string;
+  userId: string;
+  householdId?: string;
+  resourceId?: string;
+  resourceType?: string;
+  action: 'CREATE' | 'READ' | 'UPDATE' | 'DELETE' | 'ACCESS_DENIED';
+  authorized: boolean;
+  ipAddress: string;
+  userAgent: string;
+  details?: Record<string, any>;
+}
+
+export async function logAuditEvent(entry: AuditLogEntry): Promise<void> {
+  const cosmosDb = await getCosmosDbService();
+  const container = cosmosDb.getEventsContainer();
+  
+  await container.items.create({
+    id: `audit-${Date.now()}-${Math.random().toString(36)}`,
+    type: 'audit_log',
+    ...entry,
+    ttl: 7776000, // 90 days retention (GDPR requirement)
+  });
+}
+
+// Usage example:
+await logAuditEvent({
+  timestamp: new Date().toISOString(),
+  event: 'ITEM_ACCESS',
+  userId: authContext.userId,
+  householdId: requestedHouseholdId,
+  resourceId: itemId,
+  resourceType: 'item',
+  action: 'READ',
+  authorized: authContext.householdIds.includes(requestedHouseholdId),
+  ipAddress: req.headers.get('x-forwarded-for') || 'unknown',
+  userAgent: req.headers.get('user-agent') || 'unknown',
+});
+```
+
+**Events to Log:**
+- Failed authentication attempts
+- Authorization failures (403 Forbidden)
+- Cross-household access attempts
+- Item/transaction deletions
+- Household member changes
+- Data exports
+- Admin actions
 
 ---
 

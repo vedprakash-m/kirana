@@ -15,6 +15,7 @@
 
 import { app, HttpRequest, HttpResponseInit, InvocationContext } from '@azure/functions';
 import { getItemRepository } from '../repositories/itemRepository';
+import { validateJWT, validateHouseholdAccess } from '../middleware/auth';
 import { 
   ApiResponse, 
   CreateItemDto, 
@@ -26,10 +27,18 @@ import {
  * List all items for a household
  */
 async function listItems(request: HttpRequest, context: InvocationContext): Promise<HttpResponseInit> {
-  const householdId = request.query.get('householdId');
+  // Validate JWT token
+  const authContext = await validateJWT(request, context);
+  if (!authContext) {
+    return createErrorResponse(ErrorCode.AUTH_INVALID, 'Invalid or missing authentication token', 401);
+  }
   
-  if (!householdId) {
-    return createErrorResponse(ErrorCode.VALIDATION_ERROR, 'householdId query parameter is required', 400);
+  // Use user's household (do NOT trust query params)
+  const householdId = authContext.householdIds[0];
+  
+  // Validate household access
+  if (!await validateHouseholdAccess(authContext, householdId, context)) {
+    return createErrorResponse(ErrorCode.FORBIDDEN, 'Access denied to household', 403);
   }
   
   try {
@@ -47,15 +56,23 @@ async function listItems(request: HttpRequest, context: InvocationContext): Prom
  * Get item by ID
  */
 async function getItem(request: HttpRequest, context: InvocationContext): Promise<HttpResponseInit> {
-  const itemId = request.params.id;
-  const householdId = request.query.get('householdId');
-  
-  if (!householdId) {
-    return createErrorResponse(ErrorCode.VALIDATION_ERROR, 'householdId query parameter is required', 400);
+  // Validate JWT token
+  const authContext = await validateJWT(request, context);
+  if (!authContext) {
+    return createErrorResponse(ErrorCode.AUTH_INVALID, 'Invalid or missing authentication token', 401);
   }
   
+  const itemId = request.params.id;
   if (!itemId) {
     return createErrorResponse(ErrorCode.VALIDATION_ERROR, 'itemId is required', 400);
+  }
+  
+  // Use user's household (do NOT trust query params)
+  const householdId = authContext.householdIds[0];
+  
+  // Validate household access
+  if (!await validateHouseholdAccess(authContext, householdId, context)) {
+    return createErrorResponse(ErrorCode.FORBIDDEN, 'Access denied to household', 403);
   }
   
   try {
@@ -77,13 +94,23 @@ async function getItem(request: HttpRequest, context: InvocationContext): Promis
  * Create new item
  */
 async function createItem(request: HttpRequest, context: InvocationContext): Promise<HttpResponseInit> {
+  // Validate JWT token
+  const authContext = await validateJWT(request, context);
+  if (!authContext) {
+    return createErrorResponse(ErrorCode.AUTH_INVALID, 'Invalid or missing authentication token', 401);
+  }
+  
+  // Use user's household and ID from auth context (do NOT trust request body)
+  const householdId = authContext.householdIds[0];
+  const userId = authContext.userId;
+  
+  // Validate household access
+  if (!await validateHouseholdAccess(authContext, householdId, context)) {
+    return createErrorResponse(ErrorCode.FORBIDDEN, 'Access denied to household', 403);
+  }
+  
   try {
     const body = await request.json() as any;
-    
-    // Validate required fields
-    if (!body.householdId || !body.userId) {
-      return createErrorResponse(ErrorCode.VALIDATION_ERROR, 'householdId and userId are required', 400);
-    }
     
     const dto: CreateItemDto = {
       canonicalName: body.canonicalName,
@@ -112,7 +139,7 @@ async function createItem(request: HttpRequest, context: InvocationContext): Pro
     }
     
     const repository = await getItemRepository();
-    const item = await repository.create(body.householdId, body.userId, dto);
+    const item = await repository.create(householdId, userId, dto);
     
     return createSuccessResponse(item, 201);
   } catch (error: any) {
@@ -130,18 +157,27 @@ async function createItem(request: HttpRequest, context: InvocationContext): Pro
  * Update item
  */
 async function updateItem(request: HttpRequest, context: InvocationContext): Promise<HttpResponseInit> {
-  const itemId = request.params.id;
+  // Validate JWT token
+  const authContext = await validateJWT(request, context);
+  if (!authContext) {
+    return createErrorResponse(ErrorCode.AUTH_INVALID, 'Invalid or missing authentication token', 401);
+  }
   
+  const itemId = request.params.id;
   if (!itemId) {
     return createErrorResponse(ErrorCode.VALIDATION_ERROR, 'itemId is required', 400);
   }
   
+  // Use user's household from auth context (do NOT trust request body)
+  const householdId = authContext.householdIds[0];
+  
+  // Validate household access
+  if (!await validateHouseholdAccess(authContext, householdId, context)) {
+    return createErrorResponse(ErrorCode.FORBIDDEN, 'Access denied to household', 403);
+  }
+  
   try {
     const body = await request.json() as any;
-    
-    if (!body.householdId) {
-      return createErrorResponse(ErrorCode.VALIDATION_ERROR, 'householdId is required', 400);
-    }
     
     const dto: UpdateItemDto = {
       canonicalName: body.canonicalName,
@@ -159,7 +195,7 @@ async function updateItem(request: HttpRequest, context: InvocationContext): Pro
     const etag = request.headers.get('if-match');
     
     const repository = await getItemRepository();
-    const item = await repository.update(itemId, body.householdId, dto, etag || undefined);
+    const item = await repository.update(itemId, householdId, dto, etag || undefined);
     
     return createSuccessResponse(item);
   } catch (error: any) {
@@ -181,11 +217,23 @@ async function updateItem(request: HttpRequest, context: InvocationContext): Pro
  * Delete item (soft delete)
  */
 async function deleteItem(request: HttpRequest, context: InvocationContext): Promise<HttpResponseInit> {
-  const itemId = request.params.id;
-  const householdId = request.query.get('householdId');
+  // Validate JWT token
+  const authContext = await validateJWT(request, context);
+  if (!authContext) {
+    return createErrorResponse(ErrorCode.AUTH_INVALID, 'Invalid or missing authentication token', 401);
+  }
   
-  if (!itemId || !householdId) {
-    return createErrorResponse(ErrorCode.VALIDATION_ERROR, 'itemId and householdId are required', 400);
+  const itemId = request.params.id;
+  if (!itemId) {
+    return createErrorResponse(ErrorCode.VALIDATION_ERROR, 'itemId is required', 400);
+  }
+  
+  // Use user's household from auth context (do NOT trust query params)
+  const householdId = authContext.householdIds[0];
+  
+  // Validate household access
+  if (!await validateHouseholdAccess(authContext, householdId, context)) {
+    return createErrorResponse(ErrorCode.FORBIDDEN, 'Access denied to household', 403);
   }
   
   try {
@@ -208,13 +256,21 @@ async function deleteItem(request: HttpRequest, context: InvocationContext): Pro
  * Get items running out soon
  */
 async function getRunningOutSoon(request: HttpRequest, context: InvocationContext): Promise<HttpResponseInit> {
-  const householdId = request.query.get('householdId');
-  const days = request.query.get('days');
-  
-  if (!householdId) {
-    return createErrorResponse(ErrorCode.VALIDATION_ERROR, 'householdId query parameter is required', 400);
+  // Validate JWT token
+  const authContext = await validateJWT(request, context);
+  if (!authContext) {
+    return createErrorResponse(ErrorCode.AUTH_INVALID, 'Invalid or missing authentication token', 401);
   }
   
+  // Use user's household from auth context (do NOT trust query params)
+  const householdId = authContext.householdIds[0];
+  
+  // Validate household access
+  if (!await validateHouseholdAccess(authContext, householdId, context)) {
+    return createErrorResponse(ErrorCode.FORBIDDEN, 'Access denied to household', 403);
+  }
+  
+  const days = request.query.get('days');
   const daysThreshold = days ? parseInt(days) : 7;
   
   try {
@@ -232,10 +288,18 @@ async function getRunningOutSoon(request: HttpRequest, context: InvocationContex
  * Get low confidence items
  */
 async function getLowConfidence(request: HttpRequest, context: InvocationContext): Promise<HttpResponseInit> {
-  const householdId = request.query.get('householdId');
+  // Validate JWT token
+  const authContext = await validateJWT(request, context);
+  if (!authContext) {
+    return createErrorResponse(ErrorCode.AUTH_INVALID, 'Invalid or missing authentication token', 401);
+  }
   
-  if (!householdId) {
-    return createErrorResponse(ErrorCode.VALIDATION_ERROR, 'householdId query parameter is required', 400);
+  // Use user's household from auth context (do NOT trust query params)
+  const householdId = authContext.householdIds[0];
+  
+  // Validate household access
+  if (!await validateHouseholdAccess(authContext, householdId, context)) {
+    return createErrorResponse(ErrorCode.FORBIDDEN, 'Access denied to household', 403);
   }
   
   try {
@@ -253,10 +317,18 @@ async function getLowConfidence(request: HttpRequest, context: InvocationContext
  * Get confidence stats
  */
 async function getStats(request: HttpRequest, context: InvocationContext): Promise<HttpResponseInit> {
-  const householdId = request.query.get('householdId');
+  // Validate JWT token
+  const authContext = await validateJWT(request, context);
+  if (!authContext) {
+    return createErrorResponse(ErrorCode.AUTH_INVALID, 'Invalid or missing authentication token', 401);
+  }
   
-  if (!householdId) {
-    return createErrorResponse(ErrorCode.VALIDATION_ERROR, 'householdId query parameter is required', 400);
+  // Use user's household from auth context (do NOT trust query params)
+  const householdId = authContext.householdIds[0];
+  
+  // Validate household access
+  if (!await validateHouseholdAccess(authContext, householdId, context)) {
+    return createErrorResponse(ErrorCode.FORBIDDEN, 'Access denied to household', 403);
   }
   
   try {
@@ -312,56 +384,56 @@ function createErrorResponse(code: ErrorCode, message: string, status: number): 
 // Register routes
 app.http('items-list', {
   methods: ['GET'],
-  authLevel: 'anonymous',
+  authLevel: 'function',
   route: 'items',
   handler: listItems
 });
 
 app.http('items-get', {
   methods: ['GET'],
-  authLevel: 'anonymous',
+  authLevel: 'function',
   route: 'items/{id}',
   handler: getItem
 });
 
 app.http('items-create', {
   methods: ['POST'],
-  authLevel: 'anonymous',
+  authLevel: 'function',
   route: 'items',
   handler: createItem
 });
 
 app.http('items-update', {
   methods: ['PUT'],
-  authLevel: 'anonymous',
+  authLevel: 'function',
   route: 'items/{id}',
   handler: updateItem
 });
 
 app.http('items-delete', {
   methods: ['DELETE'],
-  authLevel: 'anonymous',
+  authLevel: 'function',
   route: 'items/{id}',
   handler: deleteItem
 });
 
 app.http('items-running-out', {
   methods: ['GET'],
-  authLevel: 'anonymous',
+  authLevel: 'function',
   route: 'items/running-out',
   handler: getRunningOutSoon
 });
 
 app.http('items-low-confidence', {
   methods: ['GET'],
-  authLevel: 'anonymous',
+  authLevel: 'function',
   route: 'items/low-confidence',
   handler: getLowConfidence
 });
 
 app.http('items-stats', {
   methods: ['GET'],
-  authLevel: 'anonymous',
+  authLevel: 'function',
   route: 'items/stats',
   handler: getStats
 });
