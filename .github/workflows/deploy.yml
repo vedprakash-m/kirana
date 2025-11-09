@@ -183,8 +183,13 @@ jobs:
       - name: Build
         run: cd frontend && npm run build
         env:
-          # These will be replaced by SWA config at runtime
+          # API Configuration
           VITE_API_BASE_URL: /api
+          # Microsoft Entra ID (OAuth)
+          VITE_ENTRA_CLIENT_ID: ${{ secrets.VITE_ENTRA_CLIENT_ID }}
+          VITE_ENTRA_TENANT_ID: ${{ secrets.VITE_ENTRA_TENANT_ID }}
+          VITE_ENTRA_REDIRECT_URI: https://kirana.vedprakash.net/auth/callback
+          VITE_ENTRA_AUTHORITY: https://login.microsoftonline.com/
       
       - name: Upload Build Artifacts
         uses: actions/upload-artifact@v4
