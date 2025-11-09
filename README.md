@@ -31,6 +31,29 @@ Kirana is a production-ready, full-stack application that helps households intel
 **Current Status:** ✅ **Production Ready** (Phase 1 Complete - All 77 tasks, 100%)  
 **Lines of Code:** 35,904 across 82 files (Backend: 9,968 | Frontend: 4,791 | Docs: 21,145)
 
+## 🚀 Quick Start
+
+### Deploy to Azure (15 minutes)
+
+```bash
+# 1. Run one-time infrastructure setup
+chmod +x scripts/setup-infrastructure.sh
+./scripts/setup-infrastructure.sh
+
+# 2. Configure GitHub secrets (automated)
+chmod +x scripts/setup-github-secrets.sh
+./scripts/setup-github-secrets.sh
+
+# 3. Deploy!
+git push origin main
+```
+
+**That's it!** See [DEPLOYMENT.md](docs/deployment/DEPLOYMENT.md) for detailed instructions.
+
+**Cost**: ~$6-30/month (serverless, pay-per-use)
+
+---
+
 ## ✨ Features
 
 ### Core Capabilities
