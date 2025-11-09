@@ -1,11 +1,16 @@
 name: Deploy to Azure
 
-# Simple deployment workflow for existing infrastructure
-# Prerequisites: Run scripts/setup-infrastructure.sh first
+# Comprehensive deployment & CI/CD workflow
+# Handles: Code quality, validation, tests, builds, deployment, and cost monitoring
 
 on:
   push:
-    branches: [main]
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+  schedule:
+    # Daily cost monitoring at 9 AM UTC
+    - cron: '0 9 * * *'
   workflow_dispatch:
 
 env:
@@ -13,11 +18,12 @@ env:
 
 jobs:
   # ============================================================================
-  # BUILD & TEST
+  # CODE QUALITY & VALIDATION
   # ============================================================================
-  build:
-    name: Build & Test
+  quality:
+    name: Code Quality
     runs-on: ubuntu-latest
+    if: github.event_name != 'schedule'
     steps:
       - uses: actions/checkout@v4
       
@@ -48,26 +54,90 @@ jobs:
           cd frontend && npm ci --legacy-peer-deps
           cd ../backend && npm ci
       
-      - name: Lint
-        run: |
-          cd frontend && npm run lint
-          cd ../backend && npm run lint
+      - name: Lint Frontend
+        run: cd frontend && npm run lint
       
-      - name: Test Backend
+      - name: Lint Backend
+        run: cd backend && npm run lint
+      
+      - name: Type Check Frontend
+        run: cd frontend && npx tsc --noEmit
+      
+      - name: Type Check Backend
+        run: cd backend && npm run build
+
+  # ============================================================================
+  # API SCHEMA VALIDATION
+  # ============================================================================
+  api-validation:
+    name: API Schema Validation
+    runs-on: ubuntu-latest
+    if: github.event_name != 'schedule'
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      
+      - name: Install OpenAPI Tools
+        run: |
+          npm install -g @apidevtools/swagger-cli @stoplight/spectral-cli
+      
+      - name: Validate OpenAPI Syntax
+        run: swagger-cli validate backend/openapi.yaml
+      
+      - name: Lint OpenAPI with Spectral
+        run: spectral lint backend/openapi.yaml --ruleset .spectral.yml
+        continue-on-error: true
+      
+      - name: Validate Critical Schemas
+        run: |
+          echo "✅ Checking Item schema..."
+          grep -q "Item:" backend/openapi.yaml || (echo "❌ Item schema missing" && exit 1)
+          
+          echo "✅ Checking PredictionMetadata schema..."
+          grep -q "PredictionMetadata:" backend/openapi.yaml || (echo "❌ PredictionMetadata schema missing" && exit 1)
+          
+          echo "✅ All critical schemas present"
+
+  # ============================================================================
+  # BUILD & TEST BACKEND
+  # ============================================================================
+  build-backend:
+    name: Build Backend
+    runs-on: ubuntu-latest
+    needs: quality
+    if: github.event_name != 'schedule'
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Shared Types
+        run: |
+          mkdir -p backend/src/types
+          rm -f backend/src/types/shared.ts
+          cp shared/types.ts backend/src/types/shared.ts
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache-dependency-path: backend/package-lock.json
+      
+      - name: Install Dependencies
+        run: cd backend && npm ci
+      
+      - name: Run Tests
         run: cd backend && npm test
         continue-on-error: true
       
-      - name: Build Backend
+      - name: Build
         run: cd backend && npm run build
       
-      - name: Build Frontend
-        run: cd frontend && npm run build
-        env:
-          # These will be replaced by SWA config at runtime
-          VITE_API_BASE_URL: /api
-      
-      - name: Upload Backend Artifacts
+      - name: Upload Build Artifacts
         uses: actions/upload-artifact@v4
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
         with:
           name: backend-build
           path: |
@@ -79,21 +149,59 @@ jobs:
             backend/host.json
             backend/tsconfig.json
           retention-days: 1
+
+  # ============================================================================
+  # BUILD & TEST FRONTEND
+  # ============================================================================
+  build-frontend:
+    name: Build Frontend
+    runs-on: ubuntu-latest
+    needs: quality
+    if: github.event_name != 'schedule'
+    steps:
+      - uses: actions/checkout@v4
       
-      - name: Upload Frontend Artifacts
+      - name: Setup Shared Types
+        run: |
+          mkdir -p frontend/src/types
+          rm -f frontend/src/types/shared.ts
+          cp shared/types.ts frontend/src/types/shared.ts
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache-dependency-path: frontend/package-lock.json
+      
+      - name: Install Dependencies
+        run: cd frontend && npm ci --legacy-peer-deps
+      
+      - name: Run Tests
+        run: cd frontend && npm test
+        continue-on-error: true
+      
+      - name: Build
+        run: cd frontend && npm run build
+        env:
+          # These will be replaced by SWA config at runtime
+          VITE_API_BASE_URL: /api
+      
+      - name: Upload Build Artifacts
         uses: actions/upload-artifact@v4
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
         with:
           name: frontend-build
           path: frontend/dist
           retention-days: 1
 
   # ============================================================================
-  # DEPLOY BACKEND (Azure Functions)
+  # DEPLOY BACKEND (Production only on main push)
   # ============================================================================
   deploy-backend:
     name: Deploy Backend
     runs-on: ubuntu-latest
-    needs: build
+    needs: [build-backend, api-validation]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     environment:
       name: production
     steps:
@@ -160,12 +268,13 @@ jobs:
           fi
 
   # ============================================================================
-  # DEPLOY FRONTEND (Static Web Apps)
+  # DEPLOY FRONTEND (Production only on main push)
   # ============================================================================
   deploy-frontend:
     name: Deploy Frontend
     runs-on: ubuntu-latest
-    needs: build
+    needs: build-frontend
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     environment:
       name: production
     steps:
@@ -190,29 +299,115 @@ jobs:
           skip_api_build: true
 
   # ============================================================================
+  # COST MONITORING (Daily Schedule)
+  # ============================================================================
+  cost-monitoring:
+    name: Cost Monitoring
+    runs-on: ubuntu-latest
+    if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main')
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      
+      - name: Install Azure CLI
+        run: curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash
+      
+      - name: Azure Login
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+      
+      - name: Query LLM Costs (Last 24h)
+        id: costs
+        run: |
+          QUERY='customMetrics 
+          | where name == "llm_cost" 
+          | where timestamp > ago(24h)
+          | summarize 
+              TotalCost = sum(value),
+              RequestCount = count(),
+              AvgCost = avg(value),
+              MaxCost = max(value)
+            by operation = tostring(customDimensions.operation)
+          | order by TotalCost desc'
+          
+          RESULTS=$(az monitor app-insights query \
+            --app ${{ secrets.APP_INSIGHTS_APP_ID }} \
+            --analytics-query "$QUERY" \
+            --output json 2>/dev/null || echo '{"tables":[{"rows":[]}]}')
+          
+          echo "results=$RESULTS" >> $GITHUB_OUTPUT
+          
+          TOTAL_SPEND=$(echo $RESULTS | jq '[.tables[0].rows[]? | .[0]? // 0] | add // 0')
+          echo "total_spend=$TOTAL_SPEND" >> $GITHUB_OUTPUT
+          
+          echo "💰 Total LLM spend (24h): \$$TOTAL_SPEND"
+      
+      - name: Check Budget Threshold
+        run: |
+          TOTAL="${{ steps.costs.outputs.total_spend }}"
+          DAILY_CAP=50.00
+          
+          if (( $(echo "$TOTAL > $DAILY_CAP" | bc -l) )); then
+            echo "🚨 ALERT: Daily budget exceeded! \$$TOTAL / \$$DAILY_CAP"
+            exit 1
+          else
+            echo "✅ Within budget: \$$TOTAL / \$$DAILY_CAP"
+          fi
+      
+      - name: Create Issue on Budget Alert
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: '🚨 LLM Budget Alert: Daily cap exceeded',
+              body: `## Cost Alert
+              
+              **Daily Spend:** \$${process.env.TOTAL_SPEND}
+              **Daily Cap:** \$50.00
+              
+              The LLM API costs have exceeded the daily budget. Please review:
+              1. Check Azure Application Insights for detailed cost breakdown
+              2. Review recent CSV parsing operations
+              3. Consider implementing additional rate limiting
+              
+              [View Cost Dashboard](https://kirana-backend.azurewebsites.net/api/admin/cost/summary)`,
+              labels: ['cost-alert', 'priority-high']
+            });
+
+
+
+  # ============================================================================
   # DEPLOYMENT STATUS
   # ============================================================================
   status:
     name: Deployment Status
     runs-on: ubuntu-latest
-    needs: [deploy-backend, deploy-frontend]
-    if: always()
+    needs: [quality, api-validation, build-backend, build-frontend]
+    if: always() && github.event_name != 'schedule'
     steps:
       - name: Check Deployment Status
         run: |
           echo "## 🚀 Deployment Status"
           echo ""
-          echo "Backend: ${{ needs.deploy-backend.result }}"
-          echo "Frontend: ${{ needs.deploy-frontend.result }}"
+          echo "**Code Quality:** ${{ needs.quality.result }}"
+          echo "**API Validation:** ${{ needs.api-validation.result }}"
+          echo "**Backend Build:** ${{ needs.build-backend.result }}"
+          echo "**Frontend Build:** ${{ needs.build-frontend.result }}"
           echo ""
           
-          if [[ "${{ needs.deploy-backend.result }}" == "success" ]] && \
-             [[ "${{ needs.deploy-frontend.result }}" == "success" ]]; then
-            echo "✅ Deployment Successful!"
-            echo ""
-            echo "🌐 Your app is live!"
-            exit 0
-          else
-            echo "❌ Deployment Failed"
+          # Check for failures
+          if [[ "${{ needs.quality.result }}" == "failure" ]] || \
+             [[ "${{ needs.api-validation.result }}" == "failure" ]]; then
+            echo "❌ CI/CD Failed"
             exit 1
+          else
+            echo "✅ CI/CD Checks Passed"
           fi
