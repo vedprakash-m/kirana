@@ -241,15 +241,29 @@ jobs:
       - name: Install Azure Functions Core Tools
         run: npm install -g azure-functions-core-tools@4 --unsafe-perm true
       
+      - name: Install Production Dependencies
+        run: |
+          cd backend-deploy
+          npm ci --omit=dev
+      
       - name: Azure Login
         uses: azure/login@v2
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
       
+      - name: Remove Incompatible App Settings
+        run: |
+          echo "Removing SCM_DO_BUILD_DURING_DEPLOYMENT and ENABLE_ORYX_BUILD..."
+          az functionapp config appsettings delete \
+            --name kirana-backend \
+            --resource-group kirana-rg \
+            --setting-names SCM_DO_BUILD_DURING_DEPLOYMENT ENABLE_ORYX_BUILD \
+            || echo "Settings may not exist, continuing..."
+      
       - name: Deploy to Azure Functions
         run: |
           cd backend-deploy
-          func azure functionapp publish kirana-backend --build remote --javascript
+          func azure functionapp publish kirana-backend --javascript
         env:
           AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
       
