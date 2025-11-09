@@ -22,18 +22,17 @@ import type { User } from '@/store/authStore';
  * - Security Audit (Nov 2025): Frontend token storage vulnerability fix
  */
 
-// MSAL Configuration
+// MSAL Configuration for Microsoft Entra ID
 const msalConfig: Configuration = {
   auth: {
-    clientId: import.meta.env.VITE_AZURE_AD_CLIENT_ID || '',
-    authority: `https://${import.meta.env.VITE_AZURE_AD_TENANT_NAME}.b2clogin.com/${import.meta.env.VITE_AZURE_AD_TENANT_NAME}.onmicrosoft.com/${import.meta.env.VITE_AZURE_AD_POLICY_NAME}`,
-    knownAuthorities: [`${import.meta.env.VITE_AZURE_AD_TENANT_NAME}.b2clogin.com`],
-    redirectUri: window.location.origin,
+    clientId: import.meta.env.VITE_ENTRA_CLIENT_ID || '',
+    authority: `${import.meta.env.VITE_ENTRA_AUTHORITY || 'https://login.microsoftonline.com/'}${import.meta.env.VITE_ENTRA_TENANT_ID || 'common'}`,
+    redirectUri: import.meta.env.VITE_ENTRA_REDIRECT_URI || window.location.origin,
     postLogoutRedirectUri: window.location.origin,
   },
   cache: {
-    cacheLocation: 'localStorage', // Store tokens in localStorage
-    storeAuthStateInCookie: false, // Set to true if you're supporting IE11
+    cacheLocation: 'sessionStorage', // Use sessionStorage for better security
+    storeAuthStateInCookie: false,
   },
   system: {
     loggerOptions: {
@@ -42,16 +41,16 @@ const msalConfig: Configuration = {
         
         switch (level) {
           case 0: // Error
-            console.error(message);
+            console.error('[MSAL Error]', message);
             break;
           case 1: // Warning
-            console.warn(message);
+            console.warn('[MSAL Warning]', message);
             break;
           case 2: // Info
-            console.info(message);
+            console.info('[MSAL Info]', message);
             break;
           case 3: // Verbose
-            console.debug(message);
+            console.debug('[MSAL Verbose]', message);
             break;
         }
       },
@@ -62,6 +61,10 @@ const msalConfig: Configuration = {
 // Initialize MSAL instance
 export const msalInstance = new PublicClientApplication(msalConfig);
 
+// Track initialization state
+let isInitialized = false;
+let initializationPromise: Promise<void> | null = null;
+
 // Login request scopes
 const loginRequest = {
   scopes: ['openid', 'profile', 'email'],
@@ -70,41 +73,62 @@ const loginRequest = {
 /**
  * Initialize MSAL on app startup
  * Handles redirect promise and restores auth state
+ * 
+ * MUST be called before any other MSAL operations
  */
 export async function initializeMSAL(): Promise<void> {
-  try {
-    await msalInstance.initialize();
-    
-    // Handle redirect promise (after redirect from Azure AD B2C)
-    const response = await msalInstance.handleRedirectPromise();
-    
-    if (response) {
-      // User just logged in via redirect
-      handleAuthResponse(response);
-    } else {
-      // Try to get account from cache (silent auth)
-      const accounts = msalInstance.getAllAccounts();
-      if (accounts.length > 0) {
-        msalInstance.setActiveAccount(accounts[0]);
-        
-        // Try to acquire token silently
-        try {
-          const tokenResponse = await msalInstance.acquireTokenSilent({
-            ...loginRequest,
-            account: accounts[0],
-          });
-          handleAuthResponse(tokenResponse);
-        } catch (error) {
-          // Silent token acquisition failed, user needs to sign in again
-          console.warn('Silent token acquisition failed:', error);
-          useAuthStore.getState().signOut();
+  // Return existing promise if initialization is already in progress
+  if (initializationPromise) {
+    return initializationPromise;
+  }
+  
+  // Return immediately if already initialized
+  if (isInitialized) {
+    return Promise.resolve();
+  }
+  
+  initializationPromise = (async () => {
+    try {
+      console.log('[MSAL] Initializing...');
+      await msalInstance.initialize();
+      isInitialized = true;
+      console.log('[MSAL] Initialized successfully');
+      
+      // Handle redirect promise (after redirect from Entra ID)
+      const response = await msalInstance.handleRedirectPromise();
+      
+      if (response) {
+        // User just logged in via redirect
+        console.log('[MSAL] User authenticated via redirect');
+        handleAuthResponse(response);
+      } else {
+        // Try to get account from cache (silent auth)
+        const accounts = msalInstance.getAllAccounts();
+        if (accounts.length > 0) {
+          msalInstance.setActiveAccount(accounts[0]);
+          console.log('[MSAL] Active account restored from cache');
+          
+          // Try to acquire token silently
+          try {
+            const tokenResponse = await msalInstance.acquireTokenSilent({
+              ...loginRequest,
+              account: accounts[0],
+            });
+            handleAuthResponse(tokenResponse);
+          } catch (error) {
+            // Silent token acquisition failed, user needs to sign in again
+            console.warn('[MSAL] Silent token acquisition failed:', error);
+            useAuthStore.getState().signOut();
+          }
         }
       }
+    } catch (error) {
+      console.error('[MSAL] Initialization error:', error);
+      useAuthStore.getState().setError('Authentication initialization failed');
     }
-  } catch (error) {
-    console.error('MSAL initialization error:', error);
-    useAuthStore.getState().setError('Authentication initialization failed');
-  }
+  })();
+  
+  return initializationPromise;
 }
 
 /**
@@ -112,13 +136,16 @@ export async function initializeMSAL(): Promise<void> {
  */
 export async function signInWithPopup(): Promise<void> {
   try {
+    // Ensure MSAL is initialized
+    await initializeMSAL();
+    
     useAuthStore.getState().setLoading(true);
     useAuthStore.getState().clearError();
     
     const response = await msalInstance.loginPopup(loginRequest);
     handleAuthResponse(response);
   } catch (error: unknown) {
-    console.error('Sign in error:', error);
+    console.error('[MSAL] Sign in error:', error);
     const errorMessage = error instanceof Error ? error.message : 'Sign in failed';
     useAuthStore.getState().setError(errorMessage);
     useAuthStore.getState().setLoading(false);
@@ -127,16 +154,20 @@ export async function signInWithPopup(): Promise<void> {
 
 /**
  * Sign in using redirect
- * User will be redirected to Azure AD B2C and back
+ * User will be redirected to Microsoft Entra ID and back
  */
 export async function signInWithRedirect(): Promise<void> {
   try {
+    // Ensure MSAL is initialized
+    await initializeMSAL();
+    
     useAuthStore.getState().setLoading(true);
     useAuthStore.getState().clearError();
     
+    console.log('[MSAL] Initiating redirect login...');
     await msalInstance.loginRedirect(loginRequest);
   } catch (error: unknown) {
-    console.error('Sign in error:', error);
+    console.error('[MSAL] Sign in error:', error);
     const errorMessage = error instanceof Error ? error.message : 'Sign in failed';
     useAuthStore.getState().setError(errorMessage);
     useAuthStore.getState().setLoading(false);
