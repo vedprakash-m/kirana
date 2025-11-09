@@ -253,12 +253,32 @@ jobs:
       
       - name: Remove Incompatible App Settings
         run: |
-          echo "Removing SCM_DO_BUILD_DURING_DEPLOYMENT and ENABLE_ORYX_BUILD..."
+          echo "🔧 Checking and removing incompatible app settings..."
+          
+          # List current settings
+          echo "Current app settings:"
+          az functionapp config appsettings list \
+            --name kirana-backend \
+            --resource-group kirana-rg \
+            --query "[?name=='SCM_DO_BUILD_DURING_DEPLOYMENT' || name=='ENABLE_ORYX_BUILD'].{Name:name, Value:value}" \
+            --output table || true
+          
+          # Remove SCM_DO_BUILD_DURING_DEPLOYMENT
           az functionapp config appsettings delete \
             --name kirana-backend \
             --resource-group kirana-rg \
-            --setting-names SCM_DO_BUILD_DURING_DEPLOYMENT ENABLE_ORYX_BUILD \
-            || echo "Settings may not exist, continuing..."
+            --setting-names SCM_DO_BUILD_DURING_DEPLOYMENT \
+            2>/dev/null && echo "✅ Removed SCM_DO_BUILD_DURING_DEPLOYMENT" || echo "ℹ️  SCM_DO_BUILD_DURING_DEPLOYMENT not found"
+          
+          # Remove ENABLE_ORYX_BUILD
+          az functionapp config appsettings delete \
+            --name kirana-backend \
+            --resource-group kirana-rg \
+            --setting-names ENABLE_ORYX_BUILD \
+            2>/dev/null && echo "✅ Removed ENABLE_ORYX_BUILD" || echo "ℹ️  ENABLE_ORYX_BUILD not found"
+          
+          echo "✅ App settings cleanup complete"
+        continue-on-error: false
       
       - name: Deploy to Azure Functions
         run: |
