@@ -72,9 +72,12 @@ jobs:
           name: backend-build
           path: |
             backend/dist
+            backend/src
             backend/node_modules
             backend/package.json
+            backend/package-lock.json
             backend/host.json
+            backend/tsconfig.json
           retention-days: 1
       
       - name: Upload Frontend Artifacts
@@ -96,11 +99,31 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       
+      - name: Setup Shared Types
+        run: |
+          mkdir -p backend/src/types
+          rm -f backend/src/types/shared.ts
+          cp shared/types.ts backend/src/types/shared.ts
+      
       - name: Download Build Artifacts
         uses: actions/download-artifact@v4
         with:
           name: backend-build
-          path: backend
+          path: backend-artifacts
+      
+      - name: Prepare Backend for Deployment
+        run: |
+          # Copy only the necessary files for deployment
+          mkdir -p backend-deploy
+          cp -r backend-artifacts/dist backend-deploy/
+          cp backend-artifacts/package.json backend-deploy/
+          cp backend-artifacts/package-lock.json backend-deploy/ 2>/dev/null || true
+          cp backend-artifacts/host.json backend-deploy/
+          cp backend-artifacts/tsconfig.json backend-deploy/ 2>/dev/null || true
+          
+          # Copy source for reference (in case func needs it for remote build)
+          mkdir -p backend-deploy/src
+          cp -r backend/src/* backend-deploy/src/
       
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -117,8 +140,8 @@ jobs:
       
       - name: Deploy to Azure Functions
         run: |
-          cd backend
-          func azure functionapp publish kirana-backend --javascript
+          cd backend-deploy
+          func azure functionapp publish kirana-backend --build remote --javascript
         env:
           AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
       
