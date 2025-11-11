@@ -32,7 +32,7 @@ export const LandingPage = () => {
   }
 
   return (
-    <div className="landing-page min-h-screen bg-gradient-to-br from-slate-50 via-white to-blue-50">
+    <div className="landing-page min-h-screen bg-white">
       <HeroSection onGetStarted={handleGetStarted} onSignIn={handleGetStarted} />
       <FeaturesGrid />
       <FeatureShowcase onGetStarted={handleGetStarted} />
@@ -45,17 +45,23 @@ export const LandingPage = () => {
 // Hero Section
 const HeroSection = ({ onGetStarted, onSignIn }: { onGetStarted: () => void; onSignIn: () => void }) => {
   return (
-    <section className="relative overflow-hidden">
+    <section className="relative overflow-hidden bg-gradient-to-b from-white via-blue-50/30 to-white">
+      {/* Background Decoration */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none">
+        <div className="absolute -top-40 -right-40 w-80 h-80 bg-blue-100 rounded-full blur-3xl opacity-20"></div>
+        <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-purple-100 rounded-full blur-3xl opacity-20"></div>
+      </div>
+
       {/* Navigation */}
-      <nav className="absolute top-0 left-0 right-0 z-50">
-        <div className="max-w-7xl mx-auto px-6 md:px-8 lg:px-12 py-6 flex items-center justify-between">
+      <nav className="absolute top-0 left-0 right-0 z-50 bg-white/80 backdrop-blur-sm border-b border-slate-100">
+        <div className="max-w-7xl mx-auto px-6 md:px-8 lg:px-12 py-4 flex items-center justify-between">
           <div className="text-xl font-semibold text-slate-900">
             Kirana
           </div>
           <Button
             variant="ghost"
             onClick={onSignIn}
-            className="text-sm font-medium text-slate-600 hover:text-slate-900 hover:bg-white/50"
+            className="text-sm font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-100/50 rounded-lg"
           >
             Sign In
           </Button>
@@ -63,11 +69,11 @@ const HeroSection = ({ onGetStarted, onSignIn }: { onGetStarted: () => void; onS
       </nav>
 
       {/* Hero Content */}
-      <div className="relative pt-32 pb-20 md:pt-40 md:pb-28 px-6 md:px-8">
+      <div className="relative pt-32 pb-24 md:pt-40 md:pb-32 px-6 md:px-8">
         <div className="max-w-6xl mx-auto">
           <div className="text-center space-y-8 max-w-4xl mx-auto">
             {/* Badge */}
-            <div className="inline-flex items-center gap-2 px-4 py-2 bg-blue-50 text-blue-700 rounded-full text-sm font-medium">
+            <div className="inline-flex items-center gap-2 px-4 py-2 bg-white border border-blue-200 shadow-sm text-blue-700 rounded-full text-sm font-medium">
               <Sparkles className="w-4 h-4" />
               <span>AI-Powered Grocery Intelligence</span>
             </div>
@@ -75,7 +81,7 @@ const HeroSection = ({ onGetStarted, onSignIn }: { onGetStarted: () => void; onS
             {/* Headline */}
             <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold text-slate-900 leading-tight">
               Never run out of your{' '}
-              <span className="text-blue-600">essentials</span>
+              <span className="bg-gradient-to-r from-blue-600 to-blue-700 bg-clip-text text-transparent">essentials</span>
             </h1>
             
             {/* Subheadline */}
@@ -94,7 +100,7 @@ const HeroSection = ({ onGetStarted, onSignIn }: { onGetStarted: () => void; onS
               </Button>
               <Button
                 variant="outline"
-                className="px-8 py-6 text-base font-medium rounded-xl border-slate-200 hover:border-slate-300 hover:bg-slate-50"
+                className="px-8 py-6 text-base font-medium rounded-xl border-slate-300 hover:border-blue-300 hover:bg-blue-50/50 transition-all"
               >
                 Watch Demo
               </Button>
@@ -108,15 +114,21 @@ const HeroSection = ({ onGetStarted, onSignIn }: { onGetStarted: () => void; onS
 
           {/* Hero Image */}
           <div className="mt-16 md:mt-20">
-            <div className="relative rounded-2xl overflow-hidden shadow-2xl border border-slate-200/50 bg-white p-2">
-              <img
-                src="/images/landing/hero-screenshot.webp"
-                srcSet="/images/landing/hero-screenshot-600.webp 600w, /images/landing/hero-screenshot-800.webp 800w, /images/landing/hero-screenshot-1200.webp 1200w"
-                sizes="(max-width: 768px) 600px, (max-width: 1280px) 800px, 1200px"
-                alt="Kirana dashboard showing inventory with smart predictions"
-                loading="eager"
-                className="w-full rounded-lg"
-              />
+            <div className="relative group">
+              {/* Glow effect */}
+              <div className="absolute -inset-1 bg-gradient-to-r from-blue-600 to-purple-600 rounded-2xl blur opacity-25 group-hover:opacity-40 transition duration-500"></div>
+              
+              {/* Image container */}
+              <div className="relative rounded-2xl overflow-hidden shadow-2xl bg-white border border-slate-200 p-3">
+                <img
+                  src="/images/landing/hero-screenshot.webp"
+                  srcSet="/images/landing/hero-screenshot-600.webp 600w, /images/landing/hero-screenshot-800.webp 800w, /images/landing/hero-screenshot-1200.webp 1200w"
+                  sizes="(max-width: 768px) 600px, (max-width: 1280px) 800px, 1200px"
+                  alt="Kirana dashboard showing inventory with smart predictions"
+                  loading="eager"
+                  className="w-full rounded-lg"
+                />
+              </div>
             </div>
           </div>
         </div>
@@ -132,38 +144,74 @@ const FeaturesGrid = () => {
       icon: Sparkles,
       title: 'AI-Powered Predictions',
       description: 'Machine learning algorithms analyze your consumption patterns to predict when items will run out.',
+      color: 'blue',
     },
     {
       icon: Zap,
       title: 'One-Tap Restocking',
       description: 'Record purchases instantly and watch predictions update in real-time. No manual entry required.',
+      color: 'purple',
     },
     {
       icon: Upload,
       title: 'Smart Import',
       description: 'Upload Amazon order history or receipts. AI extracts all items automatically.',
+      color: 'indigo',
     },
   ];
 
+  const colorStyles = {
+    blue: {
+      bg: 'bg-blue-50',
+      hoverBg: 'group-hover:bg-blue-100',
+      icon: 'text-blue-600',
+      border: 'border-blue-100',
+    },
+    purple: {
+      bg: 'bg-purple-50',
+      hoverBg: 'group-hover:bg-purple-100',
+      icon: 'text-purple-600',
+      border: 'border-purple-100',
+    },
+    indigo: {
+      bg: 'bg-indigo-50',
+      hoverBg: 'group-hover:bg-indigo-100',
+      icon: 'text-indigo-600',
+      border: 'border-indigo-100',
+    },
+  };
+
   return (
-    <section className="py-20 md:py-28 px-6 md:px-8">
+    <section className="py-20 md:py-28 px-6 md:px-8 bg-slate-50 border-y border-slate-100">
       <div className="max-w-7xl mx-auto">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-8 md:gap-12">
-          {features.map((feature, index) => (
-            <div key={index} className="group">
-              <div className="bg-white rounded-2xl p-8 border border-slate-200/50 hover:border-blue-200 hover:shadow-lg transition-all duration-200">
-                <div className="w-12 h-12 bg-blue-50 rounded-xl flex items-center justify-center mb-6 group-hover:bg-blue-100 transition-colors">
-                  <feature.icon className="w-6 h-6 text-blue-600" />
+        <div className="text-center mb-16">
+          <h2 className="text-3xl md:text-4xl font-bold text-slate-900 mb-4">
+            Everything you need to stay stocked
+          </h2>
+          <p className="text-lg text-slate-600 max-w-2xl mx-auto">
+            Powerful features that make grocery management effortless
+          </p>
+        </div>
+        
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 md:gap-8">
+          {features.map((feature, index) => {
+            const styles = colorStyles[feature.color as keyof typeof colorStyles];
+            return (
+              <div key={index} className="group">
+                <div className={`bg-white rounded-2xl p-8 border-2 ${styles.border} hover:border-${feature.color}-200 hover:shadow-xl transition-all duration-300 h-full`}>
+                  <div className={`w-14 h-14 ${styles.bg} ${styles.hoverBg} rounded-xl flex items-center justify-center mb-6 transition-colors`}>
+                    <feature.icon className={`w-7 h-7 ${styles.icon}`} />
+                  </div>
+                  <h3 className="text-xl font-semibold text-slate-900 mb-3">
+                    {feature.title}
+                  </h3>
+                  <p className="text-slate-600 leading-relaxed">
+                    {feature.description}
+                  </p>
                 </div>
-                <h3 className="text-xl font-semibold text-slate-900 mb-3">
-                  {feature.title}
-                </h3>
-                <p className="text-slate-600 leading-relaxed">
-                  {feature.description}
-                </p>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
     </section>
@@ -177,55 +225,79 @@ const FeatureShowcase = ({ onGetStarted }: { onGetStarted: () => void }) => {
       title: 'Know before you run out',
       description: 'Our AI learns your household\'s shopping patterns and predicts when you\'ll run out of each item. No manual tracking. No guesswork. Just smart predictions.',
       image: '/images/landing/feature-predictions.webp',
+      accent: 'blue',
     },
     {
       title: 'Restock in one tap',
       description: 'When an item is running out, just tap to record your next purchase. The AI updates its prediction instantly. Fast. Simple. Accurate.',
       image: '/images/landing/feature-restock.webp',
+      accent: 'purple',
     },
     {
       title: 'Import your purchase history',
       description: 'Upload your Amazon order history or scan a receipt. Kirana extracts everything automatically. Share your household inventory with family. Everyone stays synced.',
       image: '/images/landing/feature-import.webp',
+      accent: 'indigo',
     },
   ];
 
+  const accentColors = {
+    blue: 'from-blue-500 to-blue-600',
+    purple: 'from-purple-500 to-purple-600',
+    indigo: 'from-indigo-500 to-indigo-600',
+  };
+
   return (
-    <section className="py-20 md:py-28 px-6 md:px-8 bg-slate-50/50">
-      <div className="max-w-7xl mx-auto space-y-24 md:space-y-32">
+    <section className="py-24 md:py-32 px-6 md:px-8 bg-white">
+      <div className="max-w-7xl mx-auto space-y-32 md:space-y-40">
         {showcases.map((showcase, index) => (
           <div
             key={index}
             className={`flex flex-col ${
               index % 2 === 1 ? 'md:flex-row-reverse' : 'md:flex-row'
-            } gap-12 md:gap-16 items-center`}
+            } gap-12 md:gap-20 items-center`}
           >
+            {/* Text Content */}
             <div className="flex-1 space-y-6">
-              <h2 className="text-3xl md:text-4xl font-bold text-slate-900">
+              <div className={`inline-block px-4 py-1.5 bg-gradient-to-r ${accentColors[showcase.accent as keyof typeof accentColors]} text-white text-sm font-medium rounded-full`}>
+                Feature {index + 1}
+              </div>
+              <h2 className="text-3xl md:text-4xl lg:text-5xl font-bold text-slate-900">
                 {showcase.title}
               </h2>
-              <p className="text-lg text-slate-600 leading-relaxed">
+              <p className="text-lg md:text-xl text-slate-600 leading-relaxed">
                 {showcase.description}
               </p>
               {index === showcases.length - 1 && (
-                <Button
-                  onClick={onGetStarted}
-                  className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-medium mt-4"
-                >
-                  Start Free Trial
-                </Button>
+                <div className="pt-2">
+                  <Button
+                    onClick={onGetStarted}
+                    className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-6 text-base font-medium rounded-xl shadow-lg hover:shadow-xl transition-all"
+                  >
+                    Start Free Trial
+                    <ArrowRight className="ml-2 w-4 h-4" />
+                  </Button>
+                </div>
               )}
             </div>
+            
+            {/* Image */}
             <div className="flex-1">
-              <div className="relative rounded-2xl overflow-hidden shadow-xl border border-slate-200/50 bg-white p-2">
-                <img
-                  src={showcase.image}
-                  srcSet={`${showcase.image.replace('.webp', '-600.webp')} 600w, ${showcase.image.replace('.webp', '-800.webp')} 800w, ${showcase.image}`}
-                  sizes="(max-width: 768px) 100vw, 50vw"
-                  alt={showcase.title}
-                  loading="lazy"
-                  className="w-full rounded-lg"
-                />
+              <div className="relative group">
+                {/* Colored glow */}
+                <div className={`absolute -inset-1 bg-gradient-to-r ${accentColors[showcase.accent as keyof typeof accentColors]} rounded-2xl blur-xl opacity-20 group-hover:opacity-30 transition duration-500`}></div>
+                
+                {/* Image container */}
+                <div className="relative rounded-2xl overflow-hidden bg-white border-2 border-slate-200 shadow-xl p-3">
+                  <img
+                    src={showcase.image}
+                    srcSet={`${showcase.image.replace('.webp', '-600.webp')} 600w, ${showcase.image.replace('.webp', '-800.webp')} 800w, ${showcase.image}`}
+                    sizes="(max-width: 768px) 100vw, 50vw"
+                    alt={showcase.title}
+                    loading="lazy"
+                    className="w-full rounded-lg"
+                  />
+                </div>
               </div>
             </div>
           </div>
@@ -238,39 +310,44 @@ const FeatureShowcase = ({ onGetStarted }: { onGetStarted: () => void }) => {
 // CTA Section
 const CTASection = ({ onGetStarted }: { onGetStarted: () => void }) => {
   return (
-    <section className="py-20 md:py-28 px-6 md:px-8">
-      <div className="max-w-4xl mx-auto">
-        <div className="relative rounded-3xl bg-gradient-to-br from-blue-600 to-blue-700 overflow-hidden">
-          {/* Background Pattern */}
-          <div className="absolute inset-0 opacity-10">
-            <svg className="w-full h-full" xmlns="http://www.w3.org/2000/svg">
+    <section className="py-24 md:py-32 px-6 md:px-8 bg-slate-50">
+      <div className="max-w-5xl mx-auto">
+        <div className="relative rounded-3xl bg-gradient-to-br from-blue-600 via-blue-700 to-purple-700 overflow-hidden shadow-2xl">
+          {/* Animated Background Pattern */}
+          <div className="absolute inset-0">
+            <svg className="w-full h-full opacity-10" xmlns="http://www.w3.org/2000/svg">
               <defs>
-                <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
-                  <circle cx="2" cy="2" r="1" fill="white" />
+                <pattern id="grid-pattern" width="40" height="40" patternUnits="userSpaceOnUse">
+                  <circle cx="20" cy="20" r="1.5" fill="white" />
                 </pattern>
               </defs>
-              <rect width="100%" height="100%" fill="url(#grid)" />
+              <rect width="100%" height="100%" fill="url(#grid-pattern)" />
             </svg>
           </div>
           
+          {/* Gradient Orbs */}
+          <div className="absolute top-0 right-0 w-64 h-64 bg-purple-500 rounded-full blur-3xl opacity-20"></div>
+          <div className="absolute bottom-0 left-0 w-64 h-64 bg-blue-500 rounded-full blur-3xl opacity-20"></div>
+          
           {/* Content */}
-          <div className="relative px-8 md:px-16 py-16 md:py-20 text-center space-y-6">
-            <h2 className="text-3xl md:text-4xl font-bold text-white">
+          <div className="relative px-8 md:px-16 py-20 md:py-24 text-center space-y-8">
+            <h2 className="text-3xl md:text-4xl lg:text-5xl font-bold text-white leading-tight">
               Ready to never run out again?
             </h2>
-            <p className="text-lg md:text-xl text-blue-50 max-w-2xl mx-auto">
-              Join smart households using AI to manage their groceries effortlessly.
+            <p className="text-lg md:text-xl text-blue-50 max-w-2xl mx-auto leading-relaxed">
+              Join smart households using AI to manage their groceries effortlessly. Start your free trial today.
             </p>
             <div className="pt-4">
               <Button
                 onClick={onGetStarted}
-                className="bg-white text-blue-600 hover:bg-blue-50 px-8 py-6 text-base font-semibold rounded-xl shadow-lg hover:shadow-xl transition-all"
+                className="bg-white text-blue-600 hover:bg-blue-50 px-10 py-6 text-lg font-semibold rounded-xl shadow-xl hover:shadow-2xl transition-all group"
               >
                 Get Started Free
+                <ArrowRight className="ml-2 w-5 h-5 group-hover:translate-x-1 transition-transform" />
               </Button>
             </div>
-            <p className="text-sm text-blue-100">
-              No credit card required • Free forever
+            <p className="text-sm text-blue-100 font-medium">
+              No credit card required • Free forever • 2 minute setup
             </p>
           </div>
         </div>
@@ -282,22 +359,22 @@ const CTASection = ({ onGetStarted }: { onGetStarted: () => void }) => {
 // Footer
 const Footer = () => {
   return (
-    <footer className="border-t border-slate-200 bg-white">
-      <div className="max-w-7xl mx-auto px-6 md:px-8 py-12 md:py-16">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-8 md:gap-12 mb-12">
+    <footer className="border-t-2 border-slate-200 bg-white">
+      <div className="max-w-7xl mx-auto px-6 md:px-8 py-16 md:py-20">
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-8 md:gap-12 mb-12">
           {/* Brand */}
-          <div className="space-y-4">
-            <div className="text-xl font-semibold text-slate-900">
+          <div className="col-span-2 space-y-4">
+            <div className="text-2xl font-bold text-slate-900">
               Kirana
             </div>
-            <p className="text-sm text-slate-600 leading-relaxed">
-              AI-powered grocery intelligence for smart households.
+            <p className="text-sm text-slate-600 leading-relaxed max-w-xs">
+              AI-powered grocery intelligence for smart households. Never run out of essentials again.
             </p>
           </div>
           
           {/* Product */}
           <div>
-            <h3 className="font-semibold text-slate-900 mb-4">Product</h3>
+            <h3 className="font-semibold text-slate-900 mb-4 text-sm uppercase tracking-wider">Product</h3>
             <ul className="space-y-3 text-sm">
               <li><a href="/features" className="text-slate-600 hover:text-blue-600 transition-colors">Features</a></li>
               <li><a href="/pricing" className="text-slate-600 hover:text-blue-600 transition-colors">Pricing</a></li>
@@ -307,7 +384,7 @@ const Footer = () => {
           
           {/* Company */}
           <div>
-            <h3 className="font-semibold text-slate-900 mb-4">Company</h3>
+            <h3 className="font-semibold text-slate-900 mb-4 text-sm uppercase tracking-wider">Company</h3>
             <ul className="space-y-3 text-sm">
               <li><a href="/about" className="text-slate-600 hover:text-blue-600 transition-colors">About</a></li>
               <li><a href="/blog" className="text-slate-600 hover:text-blue-600 transition-colors">Blog</a></li>
@@ -317,10 +394,10 @@ const Footer = () => {
           
           {/* Legal */}
           <div>
-            <h3 className="font-semibold text-slate-900 mb-4">Legal</h3>
+            <h3 className="font-semibold text-slate-900 mb-4 text-sm uppercase tracking-wider">Legal</h3>
             <ul className="space-y-3 text-sm">
-              <li><a href="/privacy" className="text-slate-600 hover:text-blue-600 transition-colors">Privacy Policy</a></li>
-              <li><a href="/terms" className="text-slate-600 hover:text-blue-600 transition-colors">Terms of Service</a></li>
+              <li><a href="/privacy" className="text-slate-600 hover:text-blue-600 transition-colors">Privacy</a></li>
+              <li><a href="/terms" className="text-slate-600 hover:text-blue-600 transition-colors">Terms</a></li>
               <li><a href="/security" className="text-slate-600 hover:text-blue-600 transition-colors">Security</a></li>
             </ul>
           </div>
@@ -329,8 +406,8 @@ const Footer = () => {
         {/* Bottom Bar */}
         <div className="pt-8 border-t border-slate-200 flex flex-col md:flex-row items-center justify-between gap-4 text-sm text-slate-600">
           <div>© 2025 Kirana. All rights reserved.</div>
-          <div className="flex items-center gap-1">
-            Made with <span className="text-red-500">❤️</span> by Ved
+          <div className="flex items-center gap-1.5">
+            Made with <span className="text-red-500 text-base">❤️</span> by Ved
           </div>
         </div>
       </div>
