@@ -9,7 +9,6 @@ export const LandingPage = () => {
   const { isAuthenticated, isLoading } = useAuthStore();
   const navigate = useNavigate();
 
-  // Auto-redirect authenticated users to dashboard
   useEffect(() => {
     if (isAuthenticated) {
       navigate('/dashboard', { replace: true });
@@ -33,11 +32,9 @@ export const LandingPage = () => {
   }
 
   return (
-    <div className="landing-page">
-      {/* Hero Section */}
+    <div className="landing-page min-h-screen bg-white">
       <HeroSection onGetStarted={handleGetStarted} onSignIn={handleGetStarted} />
       
-      {/* Feature Sections */}
       <FeatureSection
         title="Know before you run out."
         description="Our AI learns your household's shopping patterns and predicts when you'll run out of each item. No manual tracking. No guesswork. Just smart predictions."
@@ -62,74 +59,77 @@ export const LandingPage = () => {
         reversed={false}
       />
       
-      {/* Final CTA Section */}
       <CTASection onGetStarted={handleGetStarted} />
-      
-      {/* Footer */}
       <Footer />
     </div>
   );
 };
 
-// Hero Section Component
 const HeroSection = ({ onGetStarted, onSignIn }: { onGetStarted: () => void; onSignIn: () => void }) => {
   return (
-    <section className="hero-section min-h-screen flex flex-col justify-center items-center bg-white px-6 pt-20 pb-28 md:px-20 lg:px-32">
-      {/* Fixed Top Navigation */}
-      <nav className="fixed top-0 left-0 right-0 z-50 bg-white/80 backdrop-blur-sm border-b border-gray-100">
-        <div className="max-w-7xl mx-auto px-6 md:px-20 lg:px-32 h-16 flex items-center justify-between">
-          <div className="text-2xl font-bold text-gray-900">KIRANA</div>
+    <section className="relative min-h-screen flex flex-col bg-linear-to-b from-white to-gray-50">
+      <nav className="fixed top-0 left-0 right-0 z-50 bg-white/90 backdrop-blur-md border-b border-gray-100">
+        <div className="max-w-7xl mx-auto px-6 md:px-8 lg:px-12 h-20 flex items-center justify-between">
+          <div className="text-2xl font-bold bg-linear-to-r from-blue-600 to-blue-700 bg-clip-text text-transparent">
+            KIRANA
+          </div>
           <Button
             variant="ghost"
             onClick={onSignIn}
-            className="text-sm font-medium"
+            className="text-sm font-medium text-gray-700 hover:text-gray-900 hover:bg-gray-50 px-6 py-2 rounded-full transition-all"
           >
             Sign In
           </Button>
         </div>
       </nav>
 
-      {/* Hero Content */}
-      <div className="flex flex-col items-center text-center max-w-[1400px] w-full mt-16">
-        {/* Headline */}
-        <h1 className="text-hero font-bold text-gray-900 leading-tight tracking-tight mb-6">
-          Never run out of your essentials.
-        </h1>
+      <div className="flex-1 flex flex-col items-center justify-center text-center px-6 md:px-8 lg:px-12 pt-32 pb-20">
+        <div className="max-w-5xl mx-auto space-y-8">
+          <h1 className="text-5xl md:text-6xl lg:text-7xl font-bold text-gray-900 leading-tight tracking-tight">
+            Never run out of your{' '}
+            <span className="bg-linear-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
+              essentials
+            </span>
+          </h1>
+          
+          <p className="text-xl md:text-2xl text-gray-600 leading-relaxed max-w-2xl mx-auto">
+            Smart predictions that learn your household's rhythm
+          </p>
+          
+          <div className="pt-4">
+            <Button
+              size="lg"
+              onClick={onGetStarted}
+              className="group relative min-w-[280px] h-14 text-lg font-semibold bg-linear-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-105 rounded-full"
+            >
+              <span className="flex items-center gap-3">
+                <svg className="w-5 h-5" viewBox="0 0 23 23" fill="currentColor">
+                  <path d="M11.5 0C5.159 0 0 5.159 0 11.5S5.159 23 11.5 23 23 17.841 23 11.5 17.841 0 11.5 0zm5.313 15.531c-.248.621-.87 1.026-1.556 1.026-.19 0-.384-.033-.573-.103l-7.094-2.625a1.78 1.78 0 01-1.103-1.103L4.121 5.632c-.213-.574-.027-1.216.458-1.58a1.58 1.58 0 011.767-.165l7.094 2.625c.494.183.882.571 1.065 1.065l2.625 7.094c.136.367.123.774-.036 1.132-.159.358-.438.646-.781.728z"/>
+                </svg>
+                Get Started with Microsoft
+              </span>
+            </Button>
+            <p className="text-sm text-gray-500 mt-4">Free forever • No credit card required</p>
+          </div>
+        </div>
         
-        {/* Subheadline */}
-        <p className="text-xl md:text-2xl text-gray-600 leading-relaxed max-w-[600px] mb-12">
-          Smart predictions that learn your household's rhythm.
-        </p>
-        
-        {/* CTA Button */}
-        <Button
-          size="lg"
-          onClick={onGetStarted}
-          className="min-w-[280px] h-14 text-lg font-semibold bg-brand-blue hover:bg-brand-blue/90 transition-transform hover:scale-105"
-        >
-          <svg className="w-5 h-5 mr-3" viewBox="0 0 23 23" fill="currentColor">
-            <path d="M11.5 0C5.159 0 0 5.159 0 11.5S5.159 23 11.5 23 23 17.841 23 11.5 17.841 0 11.5 0zm5.313 15.531c-.248.621-.87 1.026-1.556 1.026-.19 0-.384-.033-.573-.103l-7.094-2.625a1.78 1.78 0 01-1.103-1.103L4.121 5.632c-.213-.574-.027-1.216.458-1.58a1.58 1.58 0 011.767-.165l7.094 2.625c.494.183.882.571 1.065 1.065l2.625 7.094c.136.367.123.774-.036 1.132-.159.358-.438.646-.781.728z"/>
-          </svg>
-          Get Started with Microsoft
-        </Button>
-        
-        {/* Product Screenshot */}
-        <div className="mt-16 w-full max-w-[1200px]">
-          <img
-            src="/images/landing/hero-screenshot.webp"
-            srcSet="/images/landing/hero-screenshot-600.webp 600w, /images/landing/hero-screenshot-800.webp 800w, /images/landing/hero-screenshot-1200.webp 1200w"
-            sizes="(max-width: 768px) 600px, (max-width: 1280px) 800px, 1200px"
-            alt="Inventory view showing milk, eggs, and bread with color-coded run-out predictions"
-            loading="eager"
-            className="w-full rounded-2xl shadow-hero"
-          />
+        <div className="mt-16 w-full max-w-6xl mx-auto">
+          <div className="relative rounded-2xl shadow-2xl overflow-hidden bg-white p-2">
+            <img
+              src="/images/landing/hero-screenshot.webp"
+              srcSet="/images/landing/hero-screenshot-600.webp 600w, /images/landing/hero-screenshot-800.webp 800w, /images/landing/hero-screenshot-1200.webp 1200w"
+              sizes="(max-width: 768px) 600px, (max-width: 1280px) 800px, 1200px"
+              alt="Inventory view showing milk, eggs, and bread with color-coded run-out predictions"
+              loading="eager"
+              className="w-full rounded-xl"
+            />
+          </div>
         </div>
       </div>
     </section>
   );
 };
 
-// Feature Section Component (Reusable)
 interface FeatureSectionProps {
   title: string;
   description: string;
@@ -140,84 +140,96 @@ interface FeatureSectionProps {
 
 const FeatureSection = ({ title, description, imageSrc, imageAlt, reversed }: FeatureSectionProps) => {
   return (
-    <section className={`section-padding ${reversed ? 'bg-white' : 'bg-gray-50'}`}>
-      <div className={`max-w-[1400px] mx-auto grid grid-cols-1 lg:grid-cols-2 gap-12 lg:gap-20 items-center ${reversed ? 'lg:grid-flow-dense' : ''}`}>
-        {/* Image */}
-        <div className={`${reversed ? 'lg:col-start-2' : ''}`}>
-          <img
-            src={imageSrc}
-            srcSet={`${imageSrc.replace('.webp', '-600.webp')} 600w, ${imageSrc.replace('.webp', '-800.webp')} 800w, ${imageSrc}`}
-            sizes="(max-width: 768px) 600px, (max-width: 1024px) 800px, 1000px"
-            alt={imageAlt}
-            loading="lazy"
-            className="w-full rounded-2xl shadow-lg parallax-image"
-          />
-        </div>
-        
-        {/* Text Content */}
-        <div className={`${reversed ? 'lg:col-start-1 lg:row-start-1' : ''} max-w-[500px] ${reversed ? 'lg:ml-auto' : ''}`}>
-          <h2 className="text-feature font-bold text-gray-900 leading-tight mb-6">
+    <section className={`py-24 md:py-32 px-6 md:px-8 lg:px-12 ${reversed ? 'bg-white' : 'bg-gray-50'}`}>
+      <div className={`max-w-7xl mx-auto flex flex-col gap-12 md:gap-16 lg:gap-20 ${reversed ? 'md:flex-row-reverse' : 'md:flex-row'} items-center`}>
+        <div className="flex-1 space-y-6">
+          <h2 className="text-4xl md:text-5xl lg:text-6xl font-bold text-gray-900 leading-tight tracking-tight">
             {title}
           </h2>
-          <p className="text-lg text-gray-600 leading-relaxed">
+          <p className="text-lg md:text-xl text-gray-600 leading-relaxed max-w-xl">
             {description}
           </p>
         </div>
+        
+        <div className="flex-1 w-full">
+          <div className="relative rounded-2xl overflow-hidden shadow-2xl bg-white p-2">
+            <img
+              src={imageSrc}
+              srcSet={`${imageSrc.replace('.webp', '-600.webp')} 600w, ${imageSrc.replace('.webp', '-800.webp')} 800w, ${imageSrc}`}
+              sizes="(max-width: 768px) 600px, (max-width: 1024px) 800px, 1000px"
+              alt={imageAlt}
+              loading="lazy"
+              className="w-full rounded-xl"
+            />
+          </div>
+        </div>
       </div>
     </section>
   );
 };
 
-// CTA Section Component
 const CTASection = ({ onGetStarted }: { onGetStarted: () => void }) => {
   return (
-    <section className="py-40 px-6 md:px-20 lg:px-32 bg-linear-to-br from-brand-blue to-blue-600 text-white text-center">
-      <div className="max-w-[800px] mx-auto">
-        <h2 className="text-4xl md:text-5xl lg:text-[56px] font-bold leading-tight mb-4">
-          Start tracking your essentials.
+    <section className="relative py-32 md:py-40 px-6 md:px-8 lg:px-12 bg-linear-to-br from-blue-600 via-blue-700 to-purple-700 overflow-hidden">
+      <div className="absolute inset-0 opacity-10">
+        <div className="absolute inset-0" style={{
+          backgroundImage: 'radial-gradient(circle at 2px 2px, white 1px, transparent 0)',
+          backgroundSize: '40px 40px'
+        }}></div>
+      </div>
+      
+      <div className="relative max-w-4xl mx-auto text-center space-y-8">
+        <h2 className="text-4xl md:text-5xl lg:text-6xl font-bold text-white leading-tight tracking-tight">
+          Start tracking your essentials
         </h2>
-        <p className="text-xl text-white/90 mb-12">
-          It's free. Forever.
+        <p className="text-xl md:text-2xl text-white/90 leading-relaxed">
+          Free forever. No credit card required.
         </p>
-        <Button
-          size="lg"
-          onClick={onGetStarted}
-          className="min-w-[280px] h-14 text-lg font-semibold bg-white text-brand-blue hover:bg-gray-50 transition-transform hover:scale-105"
-        >
-          <svg className="w-5 h-5 mr-3" viewBox="0 0 23 23" fill="currentColor">
-            <path d="M11.5 0C5.159 0 0 5.159 0 11.5S5.159 23 11.5 23 23 17.841 23 11.5 17.841 0 11.5 0zm5.313 15.531c-.248.621-.87 1.026-1.556 1.026-.19 0-.384-.033-.573-.103l-7.094-2.625a1.78 1.78 0 01-1.103-1.103L4.121 5.632c-.213-.574-.027-1.216.458-1.58a1.58 1.58 0 011.767-.165l7.094 2.625c.494.183.882.571 1.065 1.065l2.625 7.094c.136.367.123.774-.036 1.132-.159.358-.438.646-.781.728z"/>
-          </svg>
-          Get Started with Microsoft
-        </Button>
+        <div className="pt-4">
+          <Button
+            size="lg"
+            onClick={onGetStarted}
+            className="group min-w-[280px] h-14 text-lg font-semibold bg-white text-blue-700 hover:bg-gray-50 shadow-xl hover:shadow-2xl transition-all duration-300 transform hover:scale-105 rounded-full"
+          >
+            <span className="flex items-center gap-3">
+              <svg className="w-5 h-5" viewBox="0 0 23 23" fill="currentColor">
+                <path d="M11.5 0C5.159 0 0 5.159 0 11.5S5.159 23 11.5 23 23 17.841 23 11.5 17.841 0 11.5 0zm5.313 15.531c-.248.621-.87 1.026-1.556 1.026-.19 0-.384-.033-.573-.103l-7.094-2.625a1.78 1.78 0 01-1.103-1.103L4.121 5.632c-.213-.574-.027-1.216.458-1.58a1.58 1.58 0 011.767-.165l7.094 2.625c.494.183.882.571 1.065 1.065l2.625 7.094c.136.367.123.774-.036 1.132-.159.358-.438.646-.781.728z"/>
+              </svg>
+              Get Started with Microsoft
+            </span>
+          </Button>
+        </div>
       </div>
     </section>
   );
 };
 
-// Footer Component
 const Footer = () => {
   return (
-    <footer className="py-16 px-6 md:px-20 lg:px-32 bg-gray-50 text-center">
-      <div className="max-w-[1400px] mx-auto">
-        <div className="text-2xl font-bold text-gray-900 mb-6">KIRANA</div>
-        <div className="flex flex-wrap justify-center gap-6 text-sm text-gray-600 mb-4">
-          <a href="/privacy" className="hover:text-brand-blue transition-colors hover:underline">
-            Privacy Policy
-          </a>
-          <span className="text-gray-400">•</span>
-          <a href="/terms" className="hover:text-brand-blue transition-colors hover:underline">
-            Terms of Service
-          </a>
-          <span className="text-gray-400">•</span>
-          <a href="/support" className="hover:text-brand-blue transition-colors hover:underline">
-            Support
-          </a>
+    <footer className="py-20 px-6 md:px-8 lg:px-12 bg-gray-50">
+      <div className="max-w-7xl mx-auto">
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-8 pb-8 border-b border-gray-200">
+          <div className="text-3xl font-bold bg-linear-to-r from-blue-600 to-blue-700 bg-clip-text text-transparent">
+            KIRANA
+          </div>
+          <nav className="flex flex-wrap gap-8 text-sm">
+            <a href="/privacy" className="text-gray-600 hover:text-blue-600 transition-colors font-medium">
+              Privacy Policy
+            </a>
+            <a href="/terms" className="text-gray-600 hover:text-blue-600 transition-colors font-medium">
+              Terms of Service
+            </a>
+            <a href="/support" className="text-gray-600 hover:text-blue-600 transition-colors font-medium">
+              Support
+            </a>
+          </nav>
         </div>
-        <div className="text-sm text-gray-500">
-          Made with ❤️ by Ved
-        </div>
-        <div className="text-sm text-gray-400 mt-2">
-          © 2025 Kirana
+        
+        <div className="pt-8 flex flex-col md:flex-row md:items-center md:justify-between gap-4 text-sm text-gray-500">
+          <div>© 2025 Kirana. All rights reserved.</div>
+          <div className="flex items-center gap-1">
+            Made with <span className="text-red-500">❤️</span> by Ved
+          </div>
         </div>
       </div>
     </footer>
