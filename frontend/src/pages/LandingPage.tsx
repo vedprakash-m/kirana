@@ -118,16 +118,19 @@ const HeroSection = ({ onGetStarted, onSignIn }: { onGetStarted: () => void; onS
               {/* Glow effect */}
               <div className="absolute -inset-1 bg-gradient-to-r from-blue-600 to-purple-600 rounded-2xl blur opacity-25 group-hover:opacity-40 transition duration-500"></div>
               
-              {/* Image container */}
+              {/* Image container - Placeholder with gradient */}
               <div className="relative rounded-2xl overflow-hidden shadow-2xl bg-white border border-slate-200 p-3">
-                <img
-                  src="/images/landing/hero-screenshot.webp"
-                  srcSet="/images/landing/hero-screenshot-600.webp 600w, /images/landing/hero-screenshot-800.webp 800w, /images/landing/hero-screenshot-1200.webp 1200w"
-                  sizes="(max-width: 768px) 600px, (max-width: 1280px) 800px, 1200px"
-                  alt="Kirana dashboard showing inventory with smart predictions"
-                  loading="eager"
-                  className="w-full rounded-lg"
-                />
+                <div className="relative aspect-[16/10] bg-gradient-to-br from-slate-100 via-blue-50 to-purple-50 rounded-lg flex items-center justify-center">
+                  {/* Placeholder content */}
+                  <div className="text-center space-y-3">
+                    <div className="w-16 h-16 bg-white/50 backdrop-blur rounded-2xl flex items-center justify-center mx-auto">
+                      <svg className="w-8 h-8 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
+                      </svg>
+                    </div>
+                    <div className="text-sm font-medium text-slate-600">Dashboard Preview</div>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -287,16 +290,28 @@ const FeatureShowcase = ({ onGetStarted }: { onGetStarted: () => void }) => {
                 {/* Colored glow */}
                 <div className={`absolute -inset-1 bg-gradient-to-r ${accentColors[showcase.accent as keyof typeof accentColors]} rounded-2xl blur-xl opacity-20 group-hover:opacity-30 transition duration-500`}></div>
                 
-                {/* Image container */}
+                {/* Image container - Placeholder with gradient */}
                 <div className="relative rounded-2xl overflow-hidden bg-white border-2 border-slate-200 shadow-xl p-3">
-                  <img
-                    src={showcase.image}
-                    srcSet={`${showcase.image.replace('.webp', '-600.webp')} 600w, ${showcase.image.replace('.webp', '-800.webp')} 800w, ${showcase.image}`}
-                    sizes="(max-width: 768px) 100vw, 50vw"
-                    alt={showcase.title}
-                    loading="lazy"
-                    className="w-full rounded-lg"
-                  />
+                  <div className={`relative aspect-[16/10] bg-gradient-to-br ${
+                    showcase.accent === 'blue' ? 'from-blue-50 via-slate-50 to-blue-100' :
+                    showcase.accent === 'purple' ? 'from-purple-50 via-slate-50 to-purple-100' :
+                    'from-indigo-50 via-slate-50 to-indigo-100'
+                  } rounded-lg flex items-center justify-center`}>
+                    {/* Placeholder icon */}
+                    <div className={`w-16 h-16 bg-white/60 backdrop-blur rounded-2xl flex items-center justify-center shadow-lg border ${
+                      showcase.accent === 'blue' ? 'border-blue-200' :
+                      showcase.accent === 'purple' ? 'border-purple-200' :
+                      'border-indigo-200'
+                    }`}>
+                      <svg className={`w-8 h-8 ${
+                        showcase.accent === 'blue' ? 'text-blue-600' :
+                        showcase.accent === 'purple' ? 'text-purple-600' :
+                        'text-indigo-600'
+                      }`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                      </svg>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
