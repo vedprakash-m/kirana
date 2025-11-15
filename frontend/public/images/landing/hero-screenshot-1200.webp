@@ -1,9 +1,77 @@
 <svg width="1200" height="800" xmlns="http://www.w3.org/2000/svg">
-  <rect width="1200" height="800" fill="#F9FAFB"/>
-  <text x="600" y="400" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="48" fill="#9CA3AF" text-anchor="middle">
-    Hero Screenshot Placeholder
-  </text>
-  <text x="600" y="450" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="24" fill="#D1D5DB" text-anchor="middle">
-    Inventory view with color-coded predictions
-  </text>
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#EFF6FF;stop-opacity:1" />
+      <stop offset="50%" style="stop-color:#DBEAFE;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#BFDBFE;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="cardGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#FFFFFF;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#F8FAFC;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="800" fill="url(#bgGrad)"/>
+  
+  <!-- Header Bar -->
+  <rect x="0" y="0" width="1200" height="60" fill="#FFFFFF" opacity="0.95"/>
+  <rect x="40" y="20" width="120" height="20" rx="4" fill="#2563EB"/>
+  <circle cx="1120" cy="30" r="16" fill="#DBEAFE"/>
+  <circle cx="1160" cy="30" r="16" fill="#DBEAFE"/>
+  
+  <!-- Main Dashboard Grid -->
+  <rect x="40" y="100" width="560" height="140" rx="12" fill="url(#cardGrad)" stroke="#E2E8F0" stroke-width="1"/>
+  <rect x="60" y="120" width="80" height="24" rx="4" fill="#DBEAFE"/>
+  <rect x="60" y="160" width="200" height="32" rx="4" fill="#1E40AF" opacity="0.15"/>
+  <rect x="60" y="205" width="160" height="20" rx="4" fill="#E5E7EB"/>
+  
+  <rect x="640" y="100" width="560" height="140" rx="12" fill="url(#cardGrad)" stroke="#E2E8F0" stroke-width="1"/>
+  <rect x="660" y="120" width="80" height="24" rx="4" fill="#DBEAFE"/>
+  <rect x="660" y="160" width="200" height="32" rx="4" fill="#10B981" opacity="0.15"/>
+  <rect x="660" y="205" width="160" height="20" rx="4" fill="#E5E7EB"/>
+  
+  <!-- Item Cards -->
+  <rect x="40" y="280" width="360" height="100" rx="8" fill="url(#cardGrad)" stroke="#E2E8F0" stroke-width="1"/>
+  <circle cx="80" cy="330" r="20" fill="#DBEAFE"/>
+  <rect x="110" y="310" width="140" height="16" rx="4" fill="#1F2937"/>
+  <rect x="110" y="335" width="100" height="12" rx="4" fill="#6B7280"/>
+  <rect x="300" y="315" width="80" height="30" rx="6" fill="#3B82F6"/>
+  
+  <rect x="440" y="280" width="360" height="100" rx="8" fill="url(#cardGrad)" stroke="#E2E8F0" stroke-width="1"/>
+  <circle cx="480" cy="330" r="20" fill="#FEF3C7"/>
+  <rect x="510" y="310" width="140" height="16" rx="4" fill="#1F2937"/>
+  <rect x="510" y="335" width="100" height="12" rx="4" fill="#6B7280"/>
+  <rect x="700" y="315" width="80" height="30" rx="6" fill="#F59E0B"/>
+  
+  <rect x="840" y="280" width="360" height="100" rx="8" fill="url(#cardGrad)" stroke="#E2E8F0" stroke-width="1"/>
+  <circle cx="880" cy="330" r="20" fill="#D1FAE5"/>
+  <rect x="910" y="310" width="140" height="16" rx="4" fill="#1F2937"/>
+  <rect x="910" y="335" width="100" height="12" rx="4" fill="#6B7280"/>
+  <rect x="1100" y="315" width="80" height="30" rx="6" fill="#10B981"/>
+  
+  <rect x="40" y="420" width="360" height="100" rx="8" fill="url(#cardGrad)" stroke="#E2E8F0" stroke-width="1"/>
+  <circle cx="80" cy="470" r="20" fill="#DBEAFE"/>
+  <rect x="110" y="450" width="140" height="16" rx="4" fill="#1F2937"/>
+  <rect x="110" y="475" width="100" height="12" rx="4" fill="#6B7280"/>
+  <rect x="300" y="455" width="80" height="30" rx="6" fill="#3B82F6"/>
+  
+  <rect x="440" y="420" width="360" height="100" rx="8" fill="url(#cardGrad)" stroke="#E2E8F0" stroke-width="1"/>
+  <circle cx="480" cy="470" r="20" fill="#FEE2E2"/>
+  <rect x="510" y="450" width="140" height="16" rx="4" fill="#1F2937"/>
+  <rect x="510" y="475" width="100" height="12" rx="4" fill="#6B7280"/>
+  <rect x="700" y="455" width="80" height="30" rx="6" fill="#EF4444"/>
+  
+  <rect x="840" y="420" width="360" height="100" rx="8" fill="url(#cardGrad)" stroke="#E2E8F0" stroke-width="1"/>
+  <circle cx="880" cy="470" r="20" fill="#E0E7FF"/>
+  <rect x="910" y="450" width="140" height="16" rx="4" fill="#1F2937"/>
+  <rect x="910" y="475" width="100" height="12" rx="4" fill="#6B7280"/>
+  <rect x="1100" y="455" width="80" height="30" rx="6" fill="#6366F1"/>
+  
+  <!-- Chart Area -->
+  <rect x="40" y="560" width="1160" height="200" rx="12" fill="url(#cardGrad)" stroke="#E2E8F0" stroke-width="1"/>
+  <rect x="60" y="580" width="100" height="24" rx="4" fill="#DBEAFE"/>
+  <polyline points="100,650 200,620 300,640 400,600 500,630 600,590 700,610 800,580 900,600 1000,570 1100,590" fill="none" stroke="#3B82F6" stroke-width="3"/>
+  <circle cx="100" cy="650" r="4" fill="#3B82F6"/>
+  <circle cx="300" cy="640" r="4" fill="#3B82F6"/>
+  <circle cx="600" cy="590" r="4" fill="#3B82F6"/>
+  <circle cx="1000" cy="570" r="4" fill="#3B82F6"/>
 </svg>

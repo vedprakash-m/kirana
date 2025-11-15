@@ -1,9 +1,36 @@
-<svg width="1000" height="700" xmlns="http://www.w3.org/2000/svg">
-  <rect width="1000" height="700" fill="#F9FAFB"/>
-  <text x="500" y="350" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="36" fill="#9CA3AF" text-anchor="middle">
-    CSV Import
-  </text>
-  <text x="500" y="400" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="20" fill="#D1D5DB" text-anchor="middle">
-    Automatic parsing progress
-  </text>
+<svg width="800" height="600" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg3" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#EFF6FF;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#DBEAFE;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  <rect width="800" height="600" fill="url(#bg3)"/>
+  
+  <!-- Upload Cloud Icon -->
+  <circle cx="400" cy="100" r="50" fill="#3B82F6" opacity="0.1"/>
+  <path d="M 370 100 Q 370 85 385 85 Q 385 70 400 70 Q 415 70 415 85 Q 430 85 430 100 Q 430 115 415 115 L 385 115 Q 370 115 370 100 Z" fill="none" stroke="#3B82F6" stroke-width="3"/>
+  <path d="M 400 90 L 400 115 M 390 105 L 400 95 L 410 105" fill="none" stroke="#3B82F6" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+  
+  <!-- Drop Zone -->
+  <rect x="100" y="180" width="600" height="160" rx="16" fill="#FFFFFF" stroke="#3B82F6" stroke-width="3" stroke-dasharray="10,10"/>
+  <text x="400" y="240" font-family="-apple-system" font-size="18" font-weight="600" fill="#1F2937" text-anchor="middle">Drop receipt or Amazon orders</text>
+  <text x="400" y="270" font-family="-apple-system" font-size="14" fill="#6B7280" text-anchor="middle">Supports PDF, images, or email forwards</text>
+  <rect x="330" y="290" width="140" height="36" rx="8" fill="#3B82F6"/>
+  <text x="400" y="313" font-family="-apple-system" font-size="14" font-weight="600" fill="#FFFFFF" text-anchor="middle">Browse Files</text>
+  
+  <!-- Extracted Items Preview -->
+  <text x="100" y="380" font-family="-apple-system" font-size="16" font-weight="600" fill="#1F2937">Extracted Items (3)</text>
+  
+  <rect x="100" y="400" width="600" height="60" rx="12" fill="#FFFFFF" stroke="#E5E7EB" stroke-width="2"/>
+  <circle cx="130" cy="430" r="15" fill="#D1FAE5"/>
+  <path d="M 125 430 L 128 433 L 135 426" fill="none" stroke="#10B981" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect x="160" y="418" width="150" height="14" rx="4" fill="#1F2937"/>
+  <rect x="160" y="438" width="80" height="12" rx="4" fill="#9CA3AF"/>
+  
+  <rect x="100" y="475" width="600" height="60" rx="12" fill="#FFFFFF" stroke="#E5E7EB" stroke-width="2"/>
+  <circle cx="130" cy="505" r="15" fill="#D1FAE5"/>
+  <path d="M 125 505 L 128 508 L 135 501" fill="none" stroke="#10B981" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect x="160" y="493" width="150" height="14" rx="4" fill="#1F2937"/>
+  <rect x="160" y="513" width="80" height="12" rx="4" fill="#9CA3AF"/>
 </svg>
