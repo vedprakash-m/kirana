@@ -191,8 +191,11 @@ jobs:
           VITE_ENTRA_REDIRECT_URI: https://kirana.vedprakash.net/auth/callback
           VITE_ENTRA_AUTHORITY: https://login.microsoftonline.com/
 
-      - name: Copy Static Web Apps Config
-        run: cp frontend/staticwebapp.config.json frontend/dist/staticwebapp.config.json
+      - name: Copy Static Assets (Vite fallback)
+        run: |
+          cp frontend/staticwebapp.config.json frontend/dist/staticwebapp.config.json
+          cp -r frontend/public/* frontend/dist/ 2>/dev/null || echo "Public folder already copied by Vite"
+          ls -lah frontend/dist/images/landing/ || echo "WARNING: Images not found!"
       
       - name: Upload Build Artifacts
         uses: actions/upload-artifact@v4
