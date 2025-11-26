@@ -5,12 +5,14 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { TeachModeQuickEntry } from '@/components/onboarding/TeachModeQuickEntry';
 import { itemsApi } from '@/services/itemsApi';
+import { useAuthStore } from '@/store/authStore';
 
 type ViewState = 'instructions' | 'teach-mode';
 
 export function CSVWaitPivot() {
   const navigate = useNavigate();
   const [viewState, setViewState] = useState<ViewState>('instructions');
+  const { user } = useAuthStore();
 
   // Handle opening Amazon in new tab
   const handleOpenAmazon = () => {
@@ -35,9 +37,13 @@ export function CSVWaitPivot() {
     }>
   ) => {
     try {
-      // Get user ID from auth (placeholder - will be replaced with actual auth)
-      const userId = 'placeholder-user-id'; // TODO: Replace with actual auth
-      const householdId = 'placeholder-household-id'; // TODO: Replace with actual auth
+      // Get user ID from auth store
+      const userId = user?.id;
+      const householdId = user?.householdId;
+
+      if (!userId || !householdId) {
+        throw new Error('User not authenticated or missing household');
+      }
 
       // Create each item via teach mode API
       for (const item of items) {
@@ -57,7 +63,7 @@ export function CSVWaitPivot() {
       localStorage.setItem('teachModeCompletedAt', new Date().toISOString());
 
       // Navigate to home with success message
-      navigate('/', {
+      navigate('/dashboard', {
         state: {
           message: `🎉 ${items.length} ${items.length === 1 ? 'prediction' : 'predictions'} ready! Upload your CSV when it arrives.`,
         },
@@ -72,7 +78,7 @@ export function CSVWaitPivot() {
   const handleSkip = () => {
     localStorage.setItem('awaitingCSV', 'true');
     localStorage.setItem('teachModeSkipped', 'true');
-    navigate('/');
+    navigate('/dashboard');
   };
 
   // Handle back navigation

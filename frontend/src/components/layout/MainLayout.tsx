@@ -20,7 +20,7 @@ export function MainLayout() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
 
   const navItems = [
-    { to: '/', icon: Home, label: 'Home' },
+    { to: '/dashboard', icon: Home, label: 'Home' },
     { to: '/inventory', icon: Package, label: 'Inventory' },
     { to: '/import', icon: Upload, label: 'Import' },
     { to: '/settings', icon: Settings, label: 'Settings' },

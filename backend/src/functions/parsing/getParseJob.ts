@@ -21,6 +21,7 @@
 
 import { app, HttpRequest, HttpResponseInit, InvocationContext } from '@azure/functions';
 import { getCosmosDbService } from '../../services/cosmosDbService';
+import { validateJWT } from '../../middleware/auth';
 import {
   ParseJob,
   ParseJobStatus,
@@ -149,10 +150,9 @@ function calculateProgress(job: ParseJob): ParseJobProgress {
 /**
  * Azure Function: Get Parse Job
  * 
- * GET /api/parsing/parseJobs/{jobId}?userId={userId}
+ * GET /api/parsing/parseJobs/{jobId}
  * 
- * Query params:
- * - userId: Required for rate limiting
+ * Requires: Valid JWT token
  * 
  * Response: ParseJobResponse
  */
@@ -161,8 +161,23 @@ async function getParseJob(
   context: InvocationContext
 ): Promise<HttpResponseInit> {
   try {
+    // Validate JWT token
+    const authContext = await validateJWT(request, context);
+    if (!authContext) {
+      return {
+        status: 401,
+        jsonBody: {
+          success: false,
+          error: {
+            code: ErrorCode.AUTH_INVALID,
+            message: 'Invalid or missing authentication token'
+          }
+        } as ApiResponse<never>
+      };
+    }
+
     const jobId = request.params.id;
-    const userId = request.query.get('userId');
+    const userId = authContext.userId;
     
     // Validate input
     if (!jobId) {
@@ -173,19 +188,6 @@ async function getParseJob(
           error: {
             code: ErrorCode.VALIDATION_ERROR,
             message: 'jobId is required'
-          }
-        } as ApiResponse<never>
-      };
-    }
-    
-    if (!userId) {
-      return {
-        status: 400,
-        jsonBody: {
-          success: false,
-          error: {
-            code: ErrorCode.VALIDATION_ERROR,
-            message: 'userId query parameter is required for rate limiting'
           }
         } as ApiResponse<never>
       };
@@ -296,30 +298,33 @@ async function getParseJob(
 /**
  * Azure Function: List Parse Jobs
  * 
- * GET /api/parsing/parseJobs?householdId={id}&userId={id}
+ * GET /api/parsing/parseJobs
  * 
- * Returns list of recent parse jobs for a household
+ * Requires: Valid JWT token
+ * Returns list of recent parse jobs for user's household
  */
 async function listParseJobs(
   request: HttpRequest,
   context: InvocationContext
 ): Promise<HttpResponseInit> {
   try {
-    const householdId = request.query.get('householdId');
-    const userId = request.query.get('userId');
-    
-    if (!householdId || !userId) {
+    // Validate JWT token
+    const authContext = await validateJWT(request, context);
+    if (!authContext) {
       return {
-        status: 400,
+        status: 401,
         jsonBody: {
           success: false,
           error: {
-            code: ErrorCode.VALIDATION_ERROR,
-            message: 'householdId and userId query parameters are required'
+            code: ErrorCode.AUTH_INVALID,
+            message: 'Invalid or missing authentication token'
           }
         } as ApiResponse<never>
       };
     }
+
+    const householdId = authContext.householdIds[0];
+    const userId = authContext.userId;
     
     // Rate limiting check
     const rateLimitResult = rateLimiter.check(userId);
@@ -393,14 +398,14 @@ async function listParseJobs(
 // Register Azure Functions
 app.http('parsing-get-job', {
   methods: ['GET'],
-  authLevel: 'anonymous',
+  authLevel: 'function',
   route: 'parsing/parseJobs/{id}',
   handler: getParseJob
 });
 
 app.http('parsing-list-jobs', {
   methods: ['GET'],
-  authLevel: 'anonymous',
+  authLevel: 'function',
   route: 'parsing/parseJobs',
   handler: listParseJobs
 });

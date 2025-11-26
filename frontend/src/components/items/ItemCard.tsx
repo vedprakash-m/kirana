@@ -1,4 +1,4 @@
-import { MoreVertical, Calendar } from 'lucide-react';
+import { MoreVertical, Calendar, Loader2 } from 'lucide-react';
 import type { Item } from '@/types/shared';
 import { Card, CardContent, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -12,6 +12,7 @@ interface ItemCardProps {
   onRestock?: (itemId: string) => void;
   onViewDetails?: (itemId: string) => void;
   onMenuClick?: (itemId: string) => void;
+  isRestocking?: boolean;
   className?: string;
 }
 
@@ -80,6 +81,7 @@ export function ItemCard({
   onRestock,
   onViewDetails,
   onMenuClick,
+  isRestocking = false,
   className,
 }: ItemCardProps) {
   // Calculate urgency using the new dynamic urgency calculator
@@ -209,12 +211,20 @@ export function ItemCard({
           {onRestock && (
             <Button
               size="sm"
+              disabled={isRestocking}
               onClick={(e) => {
                 e.stopPropagation();
                 onRestock(item.id);
               }}
             >
-              One-Tap Restock
+              {isRestocking ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Restocking...
+                </>
+              ) : (
+                'One-Tap Restock'
+              )}
             </Button>
           )}
           {onViewDetails && (
@@ -271,12 +281,20 @@ export function ItemCard({
             <Button
               size="sm"
               className="w-full"
+              disabled={isRestocking}
               onClick={(e) => {
                 e.stopPropagation();
                 onRestock(item.id);
               }}
             >
-              One-Tap Restock
+              {isRestocking ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Restocking...
+                </>
+              ) : (
+                'One-Tap Restock'
+              )}
             </Button>
           )}
         </CardContent>
@@ -313,12 +331,17 @@ export function ItemCard({
             size="sm"
             variant="outline"
             className="w-full text-xs"
+            disabled={isRestocking}
             onClick={(e) => {
               e.stopPropagation();
               onRestock(item.id);
             }}
           >
-            ✓ Add
+            {isRestocking ? (
+              <Loader2 className="h-3 w-3 animate-spin" />
+            ) : (
+              '✓ Add'
+            )}
           </Button>
         )}
       </CardContent>

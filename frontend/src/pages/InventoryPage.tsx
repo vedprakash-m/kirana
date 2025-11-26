@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Search } from 'lucide-react';
+import { Plus, Search, RefreshCw } from 'lucide-react';
 import { useItemsStore } from '@/store/itemsStore';
+import { transactionsApi } from '@/services/transactionsApi';
 import { ItemCard } from '@/components/items/ItemCard';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { Button } from '@/components/ui/button';
@@ -21,17 +22,28 @@ import { UrgencyLevel } from '@/types/shared';
 export function InventoryPage() {
   const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState('');
+  const [restockingItems, setRestockingItems] = useState<Set<string>>(new Set());
+  const [restockSuccess, setRestockSuccess] = useState<string | null>(null);
   
   const { 
     items, 
     isLoading, 
     error, 
     loadItems,
+    syncItems,
   } = useItemsStore();
 
   useEffect(() => {
     loadItems();
   }, [loadItems]);
+
+  // Clear success message after 3 seconds
+  useEffect(() => {
+    if (restockSuccess) {
+      const timer = setTimeout(() => setRestockSuccess(null), 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [restockSuccess]);
 
   // Calculate urgency level for each item
   const getUrgencyLevel = (predictedRunOutDate?: string): UrgencyLevel => {
@@ -71,10 +83,40 @@ export function InventoryPage() {
     return urgencyOrder[urgencyA] - urgencyOrder[urgencyB];
   });
 
-  const handleRestock = async (itemId: string) => {
-    // TODO: Implement One-Tap Restock (will call transactionsApi.restock)
-    console.log('Restock item:', itemId);
-  };
+  /**
+   * One-Tap Restock handler
+   * Calls the restock API and refreshes the item list
+   */
+  const handleRestock = useCallback(async (itemId: string) => {
+    // Prevent double-clicking
+    if (restockingItems.has(itemId)) return;
+
+    const item = items.find(i => i.id === itemId);
+    if (!item) return;
+
+    setRestockingItems(prev => new Set(prev).add(itemId));
+
+    try {
+      // Call the One-Tap Restock API
+      await transactionsApi.restock({ itemId });
+      
+      // Show success feedback
+      setRestockSuccess(item.canonicalName);
+      
+      // Refresh the items to get updated predictions
+      await syncItems();
+    } catch (error) {
+      console.error('Restock failed:', error);
+      // TODO: Show error toast when toast system is implemented
+      alert(`Failed to restock ${item.canonicalName}. Please try again.`);
+    } finally {
+      setRestockingItems(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(itemId);
+        return newSet;
+      });
+    }
+  }, [items, restockingItems, syncItems]);
 
   const handleViewDetails = (itemId: string) => {
     navigate(`/items/${itemId}`);
@@ -99,6 +141,14 @@ export function InventoryPage() {
 
   return (
     <div>
+      {/* Success Toast */}
+      {restockSuccess && (
+        <div className="fixed top-4 right-4 bg-green-600 text-white px-4 py-3 rounded-lg shadow-lg z-50 flex items-center gap-2 animate-in fade-in slide-in-from-top-2">
+          <RefreshCw className="h-4 w-4" />
+          <span>Restocked {restockSuccess}!</span>
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-3xl font-bold text-neutral-900">Inventory</h1>
@@ -192,6 +242,7 @@ export function InventoryPage() {
               variant="compact"
               onRestock={handleRestock}
               onViewDetails={handleViewDetails}
+              isRestocking={restockingItems.has(item.id)}
             />
           ))}
         </div>

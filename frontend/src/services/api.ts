@@ -242,6 +242,49 @@ class ApiClient {
 
     return response.data.data as T;
   }
+
+  /**
+   * Get the base URL for direct fetch calls
+   */
+  getBaseUrl(): string {
+    return API_BASE_URL;
+  }
+
+  /**
+   * Get the current access token
+   */
+  getAccessToken(): string | null {
+    return localStorage.getItem('auth_token');
+  }
+
+  /**
+   * POST request with FormData (multipart/form-data)
+   */
+  async postFormData<T>(url: string, formData: FormData): Promise<T> {
+    const token = this.getAccessToken();
+    
+    const response = await fetch(`${API_BASE_URL}${url}`, {
+      method: 'POST',
+      headers: {
+        ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+        'X-Request-ID': this.generateRequestId(),
+      },
+      body: formData,
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.error?.message || `Request failed with status ${response.status}`);
+    }
+
+    const result = await response.json();
+    
+    if (!result.success) {
+      throw new Error(result.error?.message || 'Request failed');
+    }
+
+    return result.data as T;
+  }
 }
 
 // Export singleton instance

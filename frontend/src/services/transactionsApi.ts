@@ -53,6 +53,13 @@ class TransactionsApiService {
   async get(id: string, householdId: string): Promise<Transaction> {
     return apiClient.get<Transaction>(`/transactions/${id}?householdId=${householdId}`);
   }
+
+  /**
+   * Get transactions for a specific item
+   */
+  async getForItem(itemId: string, householdId: string, limit = 10): Promise<Transaction[]> {
+    return this.list({ householdId, itemId, limit });
+  }
 }
 
 // Export singleton instance
