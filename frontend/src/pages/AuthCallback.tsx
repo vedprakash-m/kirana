@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Loader2 } from 'lucide-react';
-import { msalInstance } from '../services/authService';
+import { msalInstance, initializeMSAL } from '../services/authService';
 import { useAuthStore } from '../store/authStore';
 
 /**
@@ -27,6 +27,9 @@ export const AuthCallback = () => {
     const processCallback = async () => {
       try {
         console.log('[AuthCallback] Processing redirect...');
+        
+        // CRITICAL: Initialize MSAL before any other operations
+        await initializeMSAL();
         
         // Handle the redirect promise from MSAL
         const response = await msalInstance.handleRedirectPromise();
