@@ -21,7 +21,7 @@
     }
   },
   "globalHeaders": {
-    "content-security-policy": "default-src 'self' https://*.azurewebsites.net https://*.google.com; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; img-src 'self' data: https:; font-src 'self' data:;",
+    "content-security-policy": "default-src 'self' https://*.azurewebsites.net https://*.google.com https://login.microsoftonline.com https://*.microsoftonline.com https://login.microsoft.com https://*.login.microsoft.com; connect-src 'self' https://*.azurewebsites.net https://login.microsoftonline.com https://*.microsoftonline.com https://login.microsoft.com https://*.login.microsoft.com https://graph.microsoft.com https://*.google.com; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; img-src 'self' data: https:; font-src 'self' data:; frame-src 'self' https://login.microsoftonline.com https://*.microsoftonline.com;",
     "x-content-type-options": "nosniff",
     "x-frame-options": "DENY",
     "x-xss-protection": "1; mode=block",
