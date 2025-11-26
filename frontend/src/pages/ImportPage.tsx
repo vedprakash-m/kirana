@@ -8,7 +8,11 @@ import {
   XCircle, 
   Loader2, 
   ExternalLink,
-  HelpCircle 
+  Mail,
+  Sparkles,
+  Chrome,
+  FileText,
+  Clock
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -18,8 +22,59 @@ import type { ParseJobResponse } from '@/services/parsingApi';
 import { useAuthStore } from '@/store/authStore';
 import { cn } from '@/lib/utils';
 
-type ImportStep = 'select-retailer' | 'upload' | 'processing' | 'complete';
+type ImportStep = 'choose-method' | 'upload' | 'processing' | 'complete';
+type ImportMethod = 'email' | 'manual' | 'csv' | 'extension';
 type Retailer = 'amazon' | 'costco' | 'instacart' | 'other';
+
+interface ImportMethodInfo {
+  id: ImportMethod;
+  name: string;
+  description: string;
+  icon: React.ReactNode;
+  badge?: string;
+  badgeColor?: string;
+  available: boolean;
+  comingSoon?: boolean;
+}
+
+const IMPORT_METHODS: ImportMethodInfo[] = [
+  { 
+    id: 'manual', 
+    name: 'Teach Mode', 
+    description: 'Add items as you shop - Kirana learns your patterns',
+    icon: <Sparkles className="h-6 w-6" />,
+    badge: '✨ Recommended',
+    badgeColor: 'bg-blue-100 text-blue-800',
+    available: true,
+  },
+  { 
+    id: 'email', 
+    name: 'Email Import', 
+    description: 'Connect Gmail to automatically import order confirmations',
+    icon: <Mail className="h-6 w-6" />,
+    badge: '🚀 Coming Soon',
+    badgeColor: 'bg-purple-100 text-purple-800',
+    available: false,
+    comingSoon: true,
+  },
+  { 
+    id: 'extension', 
+    name: 'Browser Extension', 
+    description: 'One-click import from Amazon, Costco, Instacart',
+    icon: <Chrome className="h-6 w-6" />,
+    badge: '🚀 Coming Soon',
+    badgeColor: 'bg-purple-100 text-purple-800',
+    available: false,
+    comingSoon: true,
+  },
+  { 
+    id: 'csv', 
+    name: 'Upload CSV', 
+    description: 'For power users with exported order data',
+    icon: <FileText className="h-6 w-6" />,
+    available: true,
+  },
+];
 
 interface RetailerInfo {
   id: Retailer;
@@ -27,70 +82,63 @@ interface RetailerInfo {
   description: string;
   badge?: string;
   badgeColor?: string;
+  helpText: string;
+  exportUrl?: string;
 }
 
 const RETAILERS: RetailerInfo[] = [
   { 
     id: 'amazon', 
     name: 'Amazon', 
-    description: 'Best for starting out (12 months of data)',
-    badge: '🌟 Recommended',
-    badgeColor: 'bg-yellow-100 text-yellow-800'
+    description: 'Order history export via "Request Your Data"',
+    badge: 'Complex',
+    badgeColor: 'bg-yellow-100 text-yellow-800',
+    helpText: 'Amazon requires you to request a data download that takes 1-3 days. The format is complex.',
+    exportUrl: 'https://www.amazon.com/hz/privacy-central/data-requests/preview.html',
   },
   { 
     id: 'costco', 
     name: 'Costco', 
-    description: 'Bulk orders and receipts',
-    badge: '✓ Supported',
-    badgeColor: 'bg-green-100 text-green-800'
+    description: 'No export available - use Teach Mode instead',
+    badge: 'Not Available',
+    badgeColor: 'bg-red-100 text-red-800',
+    helpText: 'Costco doesn\'t provide order history export. We recommend using Teach Mode.',
   },
   { 
     id: 'instacart', 
     name: 'Instacart', 
-    description: 'Grocery delivery orders',
-    badge: '🧪 Beta',
-    badgeColor: 'bg-purple-100 text-purple-800'
+    description: 'No export available - use Teach Mode instead',
+    badge: 'Not Available',
+    badgeColor: 'bg-red-100 text-red-800',
+    helpText: 'Instacart doesn\'t provide order history export. We recommend using Teach Mode.',
   },
   { 
     id: 'other', 
-    name: 'Other', 
-    description: 'AI parsing (may be slower)',
+    name: 'Other / Custom CSV', 
+    description: 'Upload any CSV with item names and dates',
+    helpText: 'Upload a CSV with columns: item_name, purchase_date, quantity (optional)',
   },
 ];
 
-const AMAZON_INSTRUCTIONS = [
-  'Go to Amazon.com and sign in',
-  'Click "Account & Lists" → "Your Account"',
-  'Scroll down to "Ordering and shopping preferences"',
-  'Click "Download order reports"',
-  'Select "Items" report type',
-  'Choose "Last 12 months" date range',
-  'Click "Request Report"',
-  'Wait for email (usually 5-10 minutes)',
-  'Download the CSV from the email link',
-];
-
 /**
- * ImportPage - CSV upload and micro-review interface
+ * ImportPage - Redesigned for realistic import options
  * 
- * Per UX Spec Section 3.4:
- * - Step 1: Choose retailer
- * - Step 2: Upload file (drag-drop)
- * - Processing: Real-time progress
- * - Complete: Summary with review CTA
+ * Reality: Amazon, Costco, Instacart don't offer easy CSV export
+ * Solution: Prioritize Teach Mode, with CSV as power-user option
+ * Future: Email parsing, browser extension
  */
 export function ImportPage() {
   const navigate = useNavigate();
   const { user } = useAuthStore();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const [step, setStep] = useState<ImportStep>('select-retailer');
+  const [step, setStep] = useState<ImportStep>('choose-method');
+  const [selectedMethod, setSelectedMethod] = useState<ImportMethod | null>(null);
   const [selectedRetailer, setSelectedRetailer] = useState<Retailer | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [currentJob, setCurrentJob] = useState<ParseJobResponse | null>(null);
-  const [showInstructions, setShowInstructions] = useState(false);
 
   // Poll for job status
   useEffect(() => {
@@ -114,9 +162,24 @@ export function ImportPage() {
     return () => clearInterval(pollInterval);
   }, [currentJob]);
 
+  const handleMethodSelect = (method: ImportMethod) => {
+    if (!IMPORT_METHODS.find(m => m.id === method)?.available) {
+      return; // Can't select unavailable methods
+    }
+    
+    setSelectedMethod(method);
+    
+    if (method === 'manual') {
+      // Go to Teach Mode / manual entry
+      navigate('/inventory');
+    } else if (method === 'csv') {
+      // Show retailer selection for CSV
+      setStep('upload');
+    }
+  };
+
   const handleRetailerSelect = (retailer: Retailer) => {
     setSelectedRetailer(retailer);
-    setStep('upload');
   };
 
   const handleFileUpload = useCallback(async (file: File) => {
@@ -189,7 +252,8 @@ export function ImportPage() {
 
   const handleBack = () => {
     if (step === 'upload') {
-      setStep('select-retailer');
+      setStep('choose-method');
+      setSelectedMethod(null);
       setSelectedRetailer(null);
     } else if (step === 'processing') {
       // Confirm before canceling
@@ -225,144 +289,292 @@ export function ImportPage() {
           <ArrowLeft className="h-5 w-5" />
         </Button>
         <h1 className="text-2xl font-bold text-neutral-900">
-          {step === 'select-retailer' && 'Import from CSV'}
-          {step === 'upload' && `Import from ${selectedRetailer ? RETAILERS.find(r => r.id === selectedRetailer)?.name : 'Retailer'}`}
+          {step === 'choose-method' && 'Import Your Shopping Data'}
+          {step === 'upload' && 'Upload CSV File'}
           {step === 'processing' && 'Processing...'}
           {step === 'complete' && 'Import Complete!'}
         </h1>
       </div>
 
-      {/* Step 1: Select Retailer */}
-      {step === 'select-retailer' && (
+      {/* Step 1: Choose Import Method */}
+      {step === 'choose-method' && (
         <div className="space-y-6">
           <p className="text-neutral-600">
-            Choose where your order history is from. We'll help you get the best predictions.
+            Choose how you'd like to get started. Kirana works best when it learns from your actual shopping habits.
           </p>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {RETAILERS.map((retailer) => (
+          <div className="space-y-4">
+            {IMPORT_METHODS.map((method) => (
               <Card
-                key={retailer.id}
+                key={method.id}
                 className={cn(
-                  "cursor-pointer transition-all hover:shadow-md",
-                  selectedRetailer === retailer.id && "ring-2 ring-blue-500"
+                  "transition-all",
+                  method.available 
+                    ? "cursor-pointer hover:shadow-md hover:border-blue-300" 
+                    : "opacity-60 cursor-not-allowed",
+                  selectedMethod === method.id && "ring-2 ring-blue-500"
                 )}
-                onClick={() => handleRetailerSelect(retailer.id)}
+                onClick={() => handleMethodSelect(method.id)}
               >
                 <CardContent className="p-6">
-                  <div className="flex items-start justify-between mb-2">
-                    <h3 className="text-lg font-semibold text-neutral-900">
-                      {retailer.name}
-                    </h3>
-                    {retailer.badge && (
-                      <span className={cn("text-xs px-2 py-1 rounded-full", retailer.badgeColor)}>
-                        {retailer.badge}
-                      </span>
-                    )}
+                  <div className="flex items-start gap-4">
+                    <div className={cn(
+                      "p-3 rounded-lg",
+                      method.available ? "bg-blue-100 text-blue-600" : "bg-neutral-100 text-neutral-400"
+                    )}>
+                      {method.icon}
+                    </div>
+                    <div className="flex-1">
+                      <div className="flex items-center justify-between mb-1">
+                        <h3 className="text-lg font-semibold text-neutral-900">
+                          {method.name}
+                        </h3>
+                        {method.badge && (
+                          <span className={cn("text-xs px-2 py-1 rounded-full", method.badgeColor)}>
+                            {method.badge}
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-sm text-neutral-600">{method.description}</p>
+                      
+                      {method.id === 'manual' && (
+                        <div className="mt-3 flex items-center gap-2 text-sm text-blue-600">
+                          <Clock className="h-4 w-4" />
+                          <span>Takes ~2 min to add your first items</span>
+                        </div>
+                      )}
+                      
+                      {method.comingSoon && (
+                        <div className="mt-3 text-sm text-purple-600">
+                          Sign up to be notified when this is ready
+                        </div>
+                      )}
+                    </div>
                   </div>
-                  <p className="text-sm text-neutral-600">{retailer.description}</p>
                 </CardContent>
               </Card>
             ))}
           </div>
 
-          {/* Alternative: Manual Entry */}
-          <div className="border-t pt-6 mt-6">
-            <p className="text-sm text-neutral-600 mb-4">
-              Don't have order history? You can also add items manually.
-            </p>
-            <Button variant="outline" onClick={() => navigate('/onboarding/csv-wait')}>
-              Add Items Manually
-            </Button>
-          </div>
+          {/* Why Teach Mode Works Best */}
+          <Card className="bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-200">
+            <CardContent className="py-6">
+              <h3 className="font-semibold text-neutral-900 mb-2 flex items-center gap-2">
+                <Sparkles className="h-5 w-5 text-blue-600" />
+                Why We Recommend Teach Mode
+              </h3>
+              <ul className="space-y-2 text-sm text-neutral-700">
+                <li className="flex items-start gap-2">
+                  <CheckCircle className="h-4 w-4 text-green-600 mt-0.5" />
+                  <span><strong>Works with any store</strong> - not limited to retailers with export options</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <CheckCircle className="h-4 w-4 text-green-600 mt-0.5" />
+                  <span><strong>Learns as you go</strong> - predictions improve with each purchase</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <CheckCircle className="h-4 w-4 text-green-600 mt-0.5" />
+                  <span><strong>No data export needed</strong> - Amazon & Costco don't easily export order history</span>
+                </li>
+              </ul>
+            </CardContent>
+          </Card>
         </div>
       )}
 
-      {/* Step 2: Upload */}
+      {/* Step 2: CSV Upload with Retailer Selection */}
       {step === 'upload' && (
         <div className="space-y-6">
-          {/* Instructions Toggle */}
-          {selectedRetailer === 'amazon' && (
-            <Card className="bg-blue-50 border-blue-200">
-              <CardContent className="py-4">
-                <button 
-                  className="flex items-center gap-2 text-blue-700 font-medium w-full text-left"
-                  onClick={() => setShowInstructions(!showInstructions)}
-                >
-                  <HelpCircle className="h-5 w-5" />
-                  How to get your Amazon CSV
-                  <span className="ml-auto">{showInstructions ? '−' : '+'}</span>
-                </button>
-                
-                {showInstructions && (
-                  <div className="mt-4 space-y-2">
-                    <ol className="list-decimal list-inside space-y-2 text-sm text-blue-900">
-                      {AMAZON_INSTRUCTIONS.map((instruction, i) => (
-                        <li key={i}>{instruction}</li>
-                      ))}
-                    </ol>
-                    <Button 
-                      variant="outline" 
-                      size="sm" 
-                      className="mt-4"
-                      onClick={() => window.open('https://www.amazon.com/gp/b2b/reports', '_blank')}
-                    >
-                      Open Amazon <ExternalLink className="h-4 w-4 ml-2" />
-                    </Button>
+          {/* Retailer Selection */}
+          {!selectedRetailer && (
+            <>
+              <Card className="bg-yellow-50 border-yellow-200">
+                <CardContent className="py-4">
+                  <div className="flex items-start gap-3">
+                    <AlertTriangle className="h-5 w-5 text-yellow-600 mt-0.5" />
+                    <div className="text-sm text-yellow-800">
+                      <strong>Note:</strong> Most retailers don't provide easy CSV export. 
+                      Check below for available options, or consider using <button 
+                        className="underline font-medium" 
+                        onClick={() => navigate('/inventory')}
+                      >Teach Mode</button> instead.
+                    </div>
                   </div>
-                )}
-              </CardContent>
-            </Card>
+                </CardContent>
+              </Card>
+
+              <p className="text-neutral-600">
+                Select your retailer to see export options:
+              </p>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {RETAILERS.map((retailer) => (
+                  <Card
+                    key={retailer.id}
+                    className={cn(
+                      "cursor-pointer transition-all hover:shadow-md",
+                      selectedRetailer === retailer.id && "ring-2 ring-blue-500"
+                    )}
+                    onClick={() => handleRetailerSelect(retailer.id)}
+                  >
+                    <CardContent className="p-5">
+                      <div className="flex items-start justify-between mb-2">
+                        <h3 className="text-lg font-semibold text-neutral-900">
+                          {retailer.name}
+                        </h3>
+                        {retailer.badge && (
+                          <span className={cn("text-xs px-2 py-1 rounded-full", retailer.badgeColor)}>
+                            {retailer.badge}
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-sm text-neutral-600">{retailer.description}</p>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            </>
           )}
 
-          {/* Drop Zone */}
-          <div
-            className={cn(
-              "border-2 border-dashed rounded-lg p-12 text-center transition-all",
-              isDragging ? "border-blue-500 bg-blue-50" : "border-neutral-300 bg-neutral-50",
-              uploadError && "border-red-300 bg-red-50"
-            )}
-            onDragEnter={handleDragEnter}
-            onDragLeave={handleDragLeave}
-            onDragOver={handleDragOver}
-            onDrop={handleDrop}
-          >
-            {isUploading ? (
-              <div className="flex flex-col items-center">
-                <Loader2 className="h-12 w-12 text-blue-600 animate-spin mb-4" />
-                <p className="text-lg font-medium text-neutral-900">Uploading...</p>
-              </div>
-            ) : (
-              <>
-                <Upload className={cn("h-12 w-12 mx-auto mb-4", isDragging ? "text-blue-500" : "text-neutral-400")} />
-                <p className="text-lg font-medium text-neutral-900 mb-2">
-                  {isDragging ? 'Drop file here' : 'Drag and drop your file here'}
-                </p>
-                <p className="text-sm text-neutral-500 mb-4">
-                  or
-                </p>
-                <Button onClick={() => fileInputRef.current?.click()}>
-                  Browse Files
-                </Button>
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept=".csv,.xlsx,.txt"
-                  onChange={handleFileSelect}
-                  className="hidden"
-                />
-                <p className="text-xs text-neutral-500 mt-4">
-                  Supported formats: .csv, .xlsx, .txt • Max size: 10 MB
-                </p>
-              </>
-            )}
-          </div>
+          {/* Retailer-Specific Instructions */}
+          {selectedRetailer && (
+            <>
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                onClick={() => setSelectedRetailer(null)}
+                className="mb-2"
+              >
+                <ArrowLeft className="h-4 w-4 mr-2" />
+                Choose different retailer
+              </Button>
 
-          {uploadError && (
-            <div className="flex items-center gap-2 text-red-600 bg-red-50 p-3 rounded-lg">
-              <XCircle className="h-5 w-5" />
-              <span>{uploadError}</span>
-            </div>
+              {(selectedRetailer === 'costco' || selectedRetailer === 'instacart') && (
+                <Card className="bg-red-50 border-red-200">
+                  <CardContent className="py-6 text-center">
+                    <XCircle className="h-12 w-12 text-red-400 mx-auto mb-4" />
+                    <h3 className="text-lg font-semibold text-neutral-900 mb-2">
+                      {RETAILERS.find(r => r.id === selectedRetailer)?.name} doesn't support export
+                    </h3>
+                    <p className="text-sm text-neutral-600 mb-4">
+                      Unfortunately, this retailer doesn't provide order history export functionality.
+                    </p>
+                    <Button onClick={() => navigate('/inventory')}>
+                      <Sparkles className="h-4 w-4 mr-2" />
+                      Use Teach Mode Instead
+                    </Button>
+                  </CardContent>
+                </Card>
+              )}
+
+              {selectedRetailer === 'amazon' && (
+                <Card className="bg-yellow-50 border-yellow-200">
+                  <CardContent className="py-6">
+                    <h3 className="text-lg font-semibold text-neutral-900 mb-3 flex items-center gap-2">
+                      <AlertTriangle className="h-5 w-5 text-yellow-600" />
+                      Amazon Export is Complex
+                    </h3>
+                    <p className="text-sm text-neutral-700 mb-4">
+                      Amazon's "Request Your Data" feature takes 1-3 days and produces files in a complex format.
+                    </p>
+                    <ol className="list-decimal list-inside space-y-2 text-sm text-neutral-700 mb-4">
+                      <li>Go to Amazon Privacy Central</li>
+                      <li>Click "Request Your Data"</li>
+                      <li>Select "Your Orders" category</li>
+                      <li>Wait 1-3 days for email</li>
+                      <li>Download and extract the ZIP file</li>
+                      <li>Find the orders CSV file inside</li>
+                    </ol>
+                    <div className="flex flex-wrap gap-3">
+                      <Button 
+                        variant="outline" 
+                        onClick={() => window.open('https://www.amazon.com/hz/privacy-central/data-requests/preview.html', '_blank')}
+                      >
+                        Open Amazon Privacy <ExternalLink className="h-4 w-4 ml-2" />
+                      </Button>
+                      <Button onClick={() => navigate('/inventory')}>
+                        <Sparkles className="h-4 w-4 mr-2" />
+                        Skip - Use Teach Mode
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
+              {(selectedRetailer === 'amazon' || selectedRetailer === 'other') && (
+                <>
+                  <div className="text-center text-sm text-neutral-500 my-4">
+                    {selectedRetailer === 'amazon' ? 'Already have your Amazon data?' : 'Ready to upload?'}
+                  </div>
+
+                  {/* Drop Zone */}
+                  <div
+                    className={cn(
+                      "border-2 border-dashed rounded-lg p-12 text-center transition-all",
+                      isDragging ? "border-blue-500 bg-blue-50" : "border-neutral-300 bg-neutral-50",
+                      uploadError && "border-red-300 bg-red-50"
+                    )}
+                    onDragEnter={handleDragEnter}
+                    onDragLeave={handleDragLeave}
+                    onDragOver={handleDragOver}
+                    onDrop={handleDrop}
+                  >
+                    {isUploading ? (
+                      <div className="flex flex-col items-center">
+                        <Loader2 className="h-12 w-12 text-blue-600 animate-spin mb-4" />
+                        <p className="text-lg font-medium text-neutral-900">Uploading...</p>
+                      </div>
+                    ) : (
+                      <>
+                        <Upload className={cn("h-12 w-12 mx-auto mb-4", isDragging ? "text-blue-500" : "text-neutral-400")} />
+                        <p className="text-lg font-medium text-neutral-900 mb-2">
+                          {isDragging ? 'Drop file here' : 'Drag and drop your file here'}
+                        </p>
+                        <p className="text-sm text-neutral-500 mb-4">
+                          or
+                        </p>
+                        <Button onClick={() => fileInputRef.current?.click()}>
+                          Browse Files
+                        </Button>
+                        <input
+                          ref={fileInputRef}
+                          type="file"
+                          accept=".csv,.xlsx,.txt"
+                          onChange={handleFileSelect}
+                          className="hidden"
+                        />
+                        <p className="text-xs text-neutral-500 mt-4">
+                          Supported formats: .csv, .xlsx, .txt • Max size: 10 MB
+                        </p>
+                      </>
+                    )}
+                  </div>
+
+                  {uploadError && (
+                    <div className="flex items-center gap-2 text-red-600 bg-red-50 p-3 rounded-lg">
+                      <XCircle className="h-5 w-5" />
+                      <span>{uploadError}</span>
+                    </div>
+                  )}
+
+                  {selectedRetailer === 'other' && (
+                    <Card className="bg-neutral-50">
+                      <CardContent className="py-4">
+                        <h4 className="font-medium text-neutral-900 mb-2">Expected CSV Format</h4>
+                        <p className="text-sm text-neutral-600 mb-2">
+                          Your CSV should include these columns (names can vary):
+                        </p>
+                        <div className="bg-white rounded border p-3 font-mono text-xs overflow-x-auto">
+                          <div className="text-neutral-500">item_name, purchase_date, quantity, price</div>
+                          <div>Milk 2%, 2024-01-15, 2, 4.99</div>
+                          <div>Bread Whole Wheat, 2024-01-15, 1, 3.49</div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  )}
+                </>
+              )}
+            </>
           )}
         </div>
       )}
@@ -509,7 +721,8 @@ export function ImportPage() {
                 <Button 
                   variant="outline"
                   onClick={() => {
-                    setStep('select-retailer');
+                    setStep('choose-method');
+                    setSelectedMethod(null);
                     setSelectedRetailer(null);
                     setCurrentJob(null);
                   }}
